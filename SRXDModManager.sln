@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRXDModManager.Console", "SRXDModManager.Console\SRXDModManager.Console.csproj", "{BA1A038F-635C-4F33-B628-2453FF0C8A85}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRXDModManager.Library", "SRXDModManager.Library\SRXDModManager.Library.csproj", "{F49E5AE4-E329-40E7-AC1B-75994EB364A1}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BA1A038F-635C-4F33-B628-2453FF0C8A85}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA1A038F-635C-4F33-B628-2453FF0C8A85}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA1A038F-635C-4F33-B628-2453FF0C8A85}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA1A038F-635C-4F33-B628-2453FF0C8A85}.Release|Any CPU.Build.0 = Release|Any CPU
+		{F49E5AE4-E329-40E7-AC1B-75994EB364A1}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{F49E5AE4-E329-40E7-AC1B-75994EB364A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{F49E5AE4-E329-40E7-AC1B-75994EB364A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{F49E5AE4-E329-40E7-AC1B-75994EB364A1}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
