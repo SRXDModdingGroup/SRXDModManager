@@ -7,8 +7,8 @@
         <ProjectGuid>{BA1A038F-635C-4F33-B628-2453FF0C8A85}</ProjectGuid>
         <OutputType>Exe</OutputType>
         <AppDesignerFolder>Properties</AppDesignerFolder>
-        <RootNamespace>SRXDModManager.Console</RootNamespace>
-        <AssemblyName>SRXDModManager.Console</AssemblyName>
+        <RootNamespace>SRXDModManager</RootNamespace>
+        <AssemblyName>SRXDModManager</AssemblyName>
         <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
         <FileAlignment>512</FileAlignment>
         <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>

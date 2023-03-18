@@ -48,7 +48,7 @@
         <Compile Include="GitHubClient.cs" />
         <Compile Include="GitHubRelease.cs" />
         <Compile Include="ModDependency.cs" />
-        <Compile Include="ModManifest.cs" />
+        <Compile Include="Mod.cs" />
         <Compile Include="ModManager.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>

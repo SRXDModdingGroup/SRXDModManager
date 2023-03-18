@@ -34,8 +34,8 @@ public class GitHubClient {
         return release;
     }
 
-    public async Task<Stream> DownloadFile(string url) {
-        var response = await downloadsClient.GetAsync(url);
+    public async Task<Stream> DownloadAsset(Asset asset) {
+        var response = await downloadsClient.GetAsync(asset.Url);
         
         response.EnsureSuccessStatusCode();
 

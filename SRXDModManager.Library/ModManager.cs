@@ -11,35 +11,41 @@ public class ModManager {
     private string modsPath;
     
     private GitHubClient gitHubClient;
-    private SortedDictionary<string, ModManifest> loadedMods;
+    private SortedDictionary<string, Mod> loadedMods;
 
     public ModManager(string modsPath) {
         this.modsPath = modsPath;
 
         gitHubClient = new GitHubClient();
-        loadedMods = new SortedDictionary<string, ModManifest>();
+        loadedMods = new SortedDictionary<string, Mod>();
     }
+
+    public bool TryGetMod(string name, out Mod mod) => loadedMods.TryGetValue(name, out mod);
 
     public async Task DownloadMod(string repository) {
         var release = await gitHubClient.GetLatestRelease(repository);
-        string zipUrl = null;
+
+        if (!TryParseVersion(release.TagName, out _))
+            throw new Exception($"Tag for the latest release of mod at {repository} is not a valid version string");
+        
+        Asset zipAsset = null;
 
         foreach (var asset in release.Assets) {
             if (asset.Name != "plugin.zip")
                 continue;
 
-            zipUrl = asset.Url;
+            zipAsset = asset;
 
             break;
         }
 
-        if (zipUrl == null)
-            throw new Exception($"Mod {repository} does not have plugin.zip file");
+        if (zipAsset == null)
+            throw new Exception($"Latest release of mod at {repository} does not have a plugin.zip file");
 
         var files = new List<string>();
 
         try {
-            using var stream = await gitHubClient.DownloadFile(zipUrl);
+            using var stream = await gitHubClient.DownloadAsset(zipAsset);
             using var archive = new ZipArchive(stream);
 
             foreach (var entry in archive.Entries) {
@@ -56,20 +62,23 @@ public class ModManager {
             string manifestPath = Path.Combine(Path.GetTempPath(), "manifest.json");
 
             if (!files.Contains(manifestPath))
-                throw new Exception($"Mod {repository} does not have manifest.json file");
+                throw new Exception($"Mod at {repository} does not have manifest.json file");
 
             string name;
-            ModManifest manifest;
+            Mod manifest;
 
             using (var reader = File.OpenText(manifestPath)) {
-                manifest = JsonConvert.DeserializeObject<ModManifest>(await reader.ReadToEndAsync());
+                manifest = JsonConvert.DeserializeObject<Mod>(await reader.ReadToEndAsync());
 
                 if (manifest == null)
-                    throw new JsonException($"Could not deserialize manifest file for mod {repository}");
+                    throw new JsonException($"Could not deserialize manifest file for mod at {repository}");
 
                 if (string.IsNullOrWhiteSpace(manifest.Name))
-                    throw new Exception($"Manifest file for mod {repository} does not have a name");
-
+                    throw new Exception($"Manifest file for mod {manifest.Name} does not have a name");
+                
+                if (!TryParseVersion(manifest.Version, out _))
+                    throw new Exception($"Manifest file for mod {manifest.Name} does not have a valid version");
+                
                 name = manifest.Name;
             }
 
@@ -81,7 +90,7 @@ public class ModManager {
             foreach (string path in files)
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)));
 
-            loadedMods.Add(manifest.Repository, manifest);
+            loadedMods.Add(manifest.Name, manifest);
         }
         finally {
             foreach (string path in files) {
@@ -104,10 +113,34 @@ public class ModManager {
                 continue;
 
             using var reader = File.OpenText(manifestPath);
-            var manifest = JsonConvert.DeserializeObject<ModManifest>(await reader.ReadToEndAsync());
+            var manifest = JsonConvert.DeserializeObject<Mod>(await reader.ReadToEndAsync());
             
             if (manifest != null)
-                loadedMods.Add(manifest.Repository, manifest);
+                loadedMods.Add(manifest.Name, manifest);
         }
+    }
+
+    public async Task<bool> NeedsUpdate(Mod mod) {
+        if (!TryParseVersion(mod.Version, out var currentVersion))
+            throw new Exception($"Manifest file for mod {mod.Name} does not have a valid version");
+        
+        string repository = mod.Repository;
+        var release = await gitHubClient.GetLatestRelease(repository);
+
+        if (!TryParseVersion(release.TagName, out var latestVersion))
+            throw new Exception($"Tag for the latest release of mod {repository} is not a valid version string");
+
+        return latestVersion > currentVersion;
+    }
+
+    private static bool TryParseVersion(string text, out Version version) {
+        for (int i = text.Length - 1; i >= 0; i--) {
+            char character = text[i];
+
+            if (!char.IsDigit(character) && character != '.')
+                return Version.TryParse(text.Substring(i + 1), out version);
+        }
+
+        return Version.TryParse(text, out version);
     }
 }

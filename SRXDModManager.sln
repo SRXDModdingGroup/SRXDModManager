@@ -1,6 +1,6 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRXDModManager.Console", "SRXDModManager.Console\SRXDModManager.Console.csproj", "{BA1A038F-635C-4F33-B628-2453FF0C8A85}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRXDModManager", "SRXDModManager\SRXDModManager.csproj", "{BA1A038F-635C-4F33-B628-2453FF0C8A85}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SRXDModManager.Library", "SRXDModManager.Library\SRXDModManager.Library.csproj", "{F49E5AE4-E329-40E7-AC1B-75994EB364A1}"
 EndProject
