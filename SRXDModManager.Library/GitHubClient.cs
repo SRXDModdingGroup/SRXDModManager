@@ -10,6 +10,7 @@ namespace SRXDModManager.Library;
 public class GitHubClient {
     private HttpClient releasesClient;
     private HttpClient downloadsClient;
+    private JsonSerializer serializer;
 
     public GitHubClient() {
         releasesClient = new HttpClient();
@@ -19,6 +20,8 @@ public class GitHubClient {
         downloadsClient = new HttpClient();
         downloadsClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
         downloadsClient.DefaultRequestHeaders.UserAgent.TryParseAdd("request");
+
+        serializer = new JsonSerializer();
     }
 
     public async Task<GitHubRelease> GetLatestRelease(string repository) {
@@ -26,7 +29,8 @@ public class GitHubClient {
 
         response.EnsureSuccessStatusCode();
 
-        var release = JsonConvert.DeserializeObject<GitHubRelease>(await response.Content.ReadAsStringAsync());
+        using var textReader = new JsonTextReader(new StreamReader(await response.Content.ReadAsStreamAsync()));
+        var release = serializer.Deserialize<GitHubRelease>(textReader);
 
         if (release == null)
             throw new JsonException("Could not deserialize GitHub release");
