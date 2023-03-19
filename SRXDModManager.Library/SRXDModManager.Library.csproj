@@ -48,11 +48,11 @@
         <Compile Include="GitHub\GitHubAsset.cs" />
         <Compile Include="GitHub\GitHubClient.cs" />
         <Compile Include="GitHub\GitHubRelease.cs" />
-        <Compile Include="Mod.cs" />
-        <Compile Include="ManifestDependency.cs" />
-        <Compile Include="ModDependency.cs" />
-        <Compile Include="ModManifest.cs" />
+        <Compile Include="Manifest\ManifestDependency.cs" />
+        <Compile Include="Manifest\ModManifest.cs" />
         <Compile Include="ModManager.cs" />
+        <Compile Include="Mod\Mod.cs" />
+        <Compile Include="Mod\ModDependency.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
         <Compile Include="Result.cs" />
     </ItemGroup>

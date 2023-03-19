@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace SRXDModManager.Library; 
 
-public class ModManifest {
+internal class ModManifest {
     [JsonProperty("name")]
     public string Name { get; set; }
     
@@ -18,6 +18,4 @@ public class ModManifest {
 
     [JsonProperty("dependencies")]
     public ManifestDependency[] Dependencies { get; set; } = Array.Empty<ManifestDependency>();
-
-    internal ModManifest() { }
 }

@@ -116,22 +116,22 @@ public class ModManager {
     public async Task<Result<Version>> GetLatestVersion(Mod mod) {
         if (!(await gitHubClient.GetLatestRelease(mod.Repository))
                 .Then(GetReleaseVersion)
-                .TryGetValue(out var latestVersion, out string message))
-            return Result<Version>.Failure(message);
+                .TryGetValue(out var latestVersion, out string failureMessage))
+            return Result<Version>.Failure(failureMessage);
 
         return Result<Version>.Success(latestVersion);
     }
 
     public async Task<Result<Mod>> DownloadMod(string repository) {
         if (!(await gitHubClient.GetLatestRelease(repository))
-                .TryGetValue(out var release, out string message)
+                .TryGetValue(out var release, out string failureMessage)
             || !GetReleaseVersion(release)
-                .TryGetValue(out var expectedVersion, out message)
+                .TryGetValue(out var expectedVersion, out failureMessage)
             || !GetZipAsset(release)
-                .TryGetValue(out var zipAsset, out message)
+                .TryGetValue(out var zipAsset, out failureMessage)
             || !(await PerformDownload(zipAsset, expectedVersion, repository))
-                .TryGetValue(out var mod, out message))
-            return Result<Mod>.Failure(message);
+                .TryGetValue(out var mod, out failureMessage))
+            return Result<Mod>.Failure(failureMessage);
         
         lock (loadedMods)
             loadedMods[mod.Name] = mod;
@@ -176,8 +176,8 @@ public class ModManager {
         var tempFiles = new List<string>();
         
         if (!(await gitHubClient.DownloadAsset(zipAsset))
-            .TryGetValue(out var stream, out string message))
-            return Result<Mod>.Failure(message);
+            .TryGetValue(out var stream, out string failureMessage))
+            return Result<Mod>.Failure(failureMessage);
 
         try {
             using (var archive = new ZipArchive(stream)) {
@@ -200,11 +200,11 @@ public class ModManager {
 
             if (!DeserializeModManifest(manifestPath)
                     .Then(ValidateManifestProperties)
-                    .TryGetValue(out var manifest, out message)
+                    .TryGetValue(out var manifest, out failureMessage)
                 || !GetModVersion(manifest)
                     .Then(version => AssertVersionsEqual(version, expectedVersion, manifest.Name))
-                    .TryGetValue(out var version, out message))
-                return Result<Mod>.Failure(message);
+                    .TryGetValue(out var version, out failureMessage))
+                return Result<Mod>.Failure(failureMessage);
 
             string directory = Path.Combine(pluginsDirectory, manifest.Name);
 

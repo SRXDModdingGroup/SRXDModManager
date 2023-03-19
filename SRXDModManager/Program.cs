@@ -25,6 +25,8 @@ internal class Program {
     }
 
     private static string[] ParseText(string text) {
+        text = text.Trim();
+        
         if (string.IsNullOrWhiteSpace(text))
             return Array.Empty<string>();
 

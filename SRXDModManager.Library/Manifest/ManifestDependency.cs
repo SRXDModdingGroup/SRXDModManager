@@ -2,7 +2,7 @@
 
 namespace SRXDModManager.Library; 
 
-public class ManifestDependency {
+internal class ManifestDependency {
     [JsonProperty("name")]
     public string Name { get; set; }
     
@@ -11,6 +11,4 @@ public class ManifestDependency {
     
     [JsonProperty("repository")]
     public string Repository { get; set; }
-    
-    internal ManifestDependency() { }
 }
