@@ -2,7 +2,7 @@
 
 namespace SRXDModManager.Library; 
 
-public class ModDependency {
+internal class ModDependency {
     [JsonProperty("name")]
     public string Name { get; set; }
     

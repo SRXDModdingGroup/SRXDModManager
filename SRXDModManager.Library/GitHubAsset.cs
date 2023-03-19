@@ -2,7 +2,7 @@
 
 namespace SRXDModManager.Library; 
 
-public class Asset {
+internal class GitHubAsset {
     [JsonProperty("url")]
     public string Url { get; set; }
     

@@ -1,5 +1,4 @@
-﻿using System;
-using System.IO;
+﻿using System.IO;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Threading.Tasks;
@@ -7,7 +6,7 @@ using Newtonsoft.Json;
 
 namespace SRXDModManager.Library;
 
-public class GitHubClient {
+internal class GitHubClient {
     private HttpClient releasesClient;
     private HttpClient downloadsClient;
     private JsonSerializer serializer;
@@ -24,25 +23,28 @@ public class GitHubClient {
         serializer = new JsonSerializer();
     }
 
-    public async Task<GitHubRelease> GetLatestRelease(string repository) {
-        var response = await releasesClient.GetAsync($"https://api.github.com/repos/{repository}/releases/latest");
+    public async Task<Result<GitHubRelease>> GetLatestRelease(string repository) {
+        string url = $"https://api.github.com/repos/{repository}/releases/latest";
+        var response = await releasesClient.GetAsync(url);
 
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+            return Result<GitHubRelease>.Failure($"GET request to url {url} failed");
 
         using var textReader = new JsonTextReader(new StreamReader(await response.Content.ReadAsStreamAsync()));
         var release = serializer.Deserialize<GitHubRelease>(textReader);
 
         if (release == null)
-            throw new JsonException("Could not deserialize GitHub release");
+            return Result<GitHubRelease>.Failure("Could not deserialize GitHub release");
 
-        return release;
+        return Result<GitHubRelease>.Success(release);
     }
 
-    public async Task<Stream> DownloadAsset(Asset asset) {
+    public async Task<Result<Stream>> DownloadAsset(GitHubAsset asset) {
         var response = await downloadsClient.GetAsync(asset.Url);
         
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+            return Result<Stream>.Failure($"GET request to url {asset.Url} failed");
 
-        return await response.Content.ReadAsStreamAsync();
+        return Result<Stream>.Success(await response.Content.ReadAsStreamAsync());
     }
 }

@@ -3,7 +3,7 @@ using Newtonsoft.Json;
 
 namespace SRXDModManager.Library; 
 
-public class GitHubRelease {
+internal class GitHubRelease {
     [JsonProperty("id")]
     public int Id { get; set; }
     
@@ -20,5 +20,5 @@ public class GitHubRelease {
     public string PublishedAt { get; set; }
 
     [JsonProperty("assets")]
-    public Asset[] Assets { get; set; } = Array.Empty<Asset>();
+    public GitHubAsset[] Assets { get; set; } = Array.Empty<GitHubAsset>();
 }

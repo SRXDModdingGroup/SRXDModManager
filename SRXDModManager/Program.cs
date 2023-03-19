@@ -1,6 +1,4 @@
-﻿using System;
-using System.Threading.Tasks;
-using SRXDModManager.Library;
+﻿using System.Threading.Tasks;
 
 namespace SRXDModManager;
 
