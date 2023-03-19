@@ -21,4 +21,6 @@ public class Mod {
         Repository = manifest.Repository;
         Dependencies = manifest.Dependencies;
     }
+
+    public override string ToString() => $"{Name} {Version}";
 }

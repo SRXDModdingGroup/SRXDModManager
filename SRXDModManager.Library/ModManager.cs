@@ -112,6 +112,8 @@ public class ModManager {
         return Result.Success();
     }
 
+    public IReadOnlyList<Mod> GetLoadedMods() => new List<Mod>(loadedMods.Values);
+
     public async Task<Result<bool>> NeedsUpdate(Mod mod) {
         if (!GetModVersion(mod)
                 .TryGetValue(out var currentVersion, out string message)
@@ -201,8 +203,10 @@ public class ModManager {
 
             string directory = Path.Combine(pluginsDirectory, manifest.Name);
 
-            if (!Directory.Exists(directory))
-                Directory.CreateDirectory(directory);
+            if (Directory.Exists(directory))
+                Directory.Delete(directory, true);
+
+            Directory.CreateDirectory(directory);
 
             foreach (string path in tempFiles)
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)));

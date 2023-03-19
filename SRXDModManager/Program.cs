@@ -8,7 +8,7 @@ namespace SRXDModManager;
 internal class Program {
     public static void Main() {
         var modManager = new ModManager("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm");
-        var commandLine = CommandLine.Create(modManager);
+        var commandLine = new CommandLine(modManager);
         
         commandLine.RefreshMods();
 
