@@ -1,5 +1,7 @@
 ﻿using System;
 using System.CommandLine;
+using System.Linq;
+using System.Threading.Tasks;
 using SRXDModManager.Library;
 
 namespace SRXDModManager; 
@@ -66,13 +68,9 @@ public class CommandLine {
     }
 
     public void CheckForUpdate(string name) {
-        if (!modManager.TryGetMod(name, out var mod)) {
+        if (!modManager.TryGetMod(name, out var mod))
             Console.WriteLine($"{name} not found");
-            
-            return;
-        }
-
-        if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+        else if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
@@ -81,19 +79,27 @@ public class CommandLine {
     }
 
     public void CheckAllForUpdates() {
-        bool any = false;
-        
-        foreach (var mod in modManager.GetLoadedMods()) {
-            if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
-                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
-            else if (latestVersion > mod.Version) {
-                Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
-                any = true;
-            }
-        }
-        
-        if (!any)
+        var mods = modManager.GetLoadedMods();
+        var tasks = new Task<bool>[mods.Count];
+
+        for (int i = 0; i < mods.Count; i++)
+            tasks[i] = CheckOne(mods[i]);
+
+        Task.WaitAll(tasks);
+
+        if (!tasks.Any(task => task.Result))
             Console.WriteLine("All mods are up to date");
+        
+        async Task<bool> CheckOne(Mod mod) {
+            if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage))
+                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+            else if (latestVersion > mod.Version)
+                Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
+            else
+                return false;
+
+            return true;
+        }
     }
 
     public void DownloadMod(string repository) {
@@ -152,19 +158,29 @@ public class CommandLine {
     }
 
     public void UpdateAllMods() {
-        bool any = false;
-        
-        foreach (var mod in modManager.GetLoadedMods()) {
-            if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
-                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
-            else if (latestVersion > mod.Version) {
-                DownloadMod(mod.Repository);
-                any = true;
-            }
-        }
-        
-        if (!any)
+        var mods = modManager.GetLoadedMods();
+        var tasks = new Task<bool>[mods.Count];
+
+        for (int i = 0; i < mods.Count; i++)
+            tasks[i] = UpdateOne(mods[i]);
+
+        Task.WaitAll(tasks);
+
+        if (!tasks.Any(task => task.Result))
             Console.WriteLine("All mods are up to date");
+
+        async Task<bool> UpdateOne(Mod mod) {
+            if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage))
+                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+            else if (mod.Version >= latestVersion)
+                return false;
+            else if (!(await modManager.DownloadMod(mod.Repository)).TryGetValue(out var newMod, out failureMessage))
+                Console.WriteLine($"Failed to update {mod}: {failureMessage}");
+            else
+                Console.WriteLine($"Successfully downloaded {newMod}");
+
+            return true;
+        }
     }
     
     private static Command CreateCommand(string name, string description, Action<Command> init = null) {
