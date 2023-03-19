@@ -21,9 +21,9 @@ public readonly struct Result {
 
     public Result<TNext> Then<TNext>(Func<Result<TNext>> next) => isSuccess ? next() : new Result<TNext>(default, false, failureMessage);
 
-    internal static Result Success() => new(true, string.Empty);
+    public static Result Success() => new(true, string.Empty);
 
-    internal static Result Failure(string message) => new(false, message);
+    public static Result Failure(string message) => new(false, message);
 }
 
 public readonly struct Result<T> {
@@ -48,7 +48,7 @@ public readonly struct Result<T> {
     
     public Result<TNext> Then<TNext>(Func<T, Result<TNext>> next) => isSuccess ? next(value) : new Result<TNext>(default, false, failureMessage);
     
-    internal static Result<T> Success(T value) => new(value, true, string.Empty);
+    public static Result<T> Success(T value) => new(value, true, string.Empty);
 
-    internal static Result<T> Failure(string message) => new(default, false, message);
+    public static Result<T> Failure(string message) => new(default, false, message);
 }
