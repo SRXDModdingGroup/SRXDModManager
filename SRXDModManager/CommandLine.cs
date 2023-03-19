@@ -24,7 +24,7 @@ public class CommandLine {
         root.AddCommand(CreateCommand("check", "Checks a mod for updates", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
             
-            command.AddCommand(CreateCommand("all", "Check all loaded mods for updates", command => command.SetHandler(CheckAllForUpdates)));
+            command.AddCommand(CreateCommand("all", "Checks all loaded mods for updates", command => command.SetHandler(CheckAllForUpdates)));
             command.AddArgument(nameArg);
             command.SetHandler(CheckForUpdate, nameArg);
         }));
@@ -41,14 +41,14 @@ public class CommandLine {
         
         root.AddCommand(CreateCommand("exit", "Exits the application"));
         
-        root.AddCommand(CreateCommand("list", "List all loaded mods", command => { command.SetHandler(ListMods); }));
+        root.AddCommand(CreateCommand("list", "Lists all loaded mods", command => { command.SetHandler(ListMods); }));
         
         root.AddCommand(CreateCommand("refresh", "Refreshes the list of downloaded mods", command => { command.SetHandler(RefreshMods); }));
         
         root.AddCommand(CreateCommand("update", "Updates a mod if there is a new version available", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
             
-            command.AddCommand(CreateCommand("all", "Update all loaded mods", command => command.SetHandler(UpdateAllMods)));
+            command.AddCommand(CreateCommand("all", "Updates all loaded mods", command => command.SetHandler(UpdateAllMods)));
             command.AddArgument(nameArg);
             command.SetHandler(UpdateMod, nameArg);
         }));

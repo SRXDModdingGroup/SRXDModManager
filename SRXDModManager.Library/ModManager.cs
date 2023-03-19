@@ -24,12 +24,14 @@ public class ModManager {
         loadedMods = new SortedDictionary<string, Mod>();
     }
 
-    public bool TryGetMod(string name, out Mod mod) => loadedMods.TryGetValue(name, out mod);
+    public bool TryGetMod(string name, out Mod mod) {
+        lock (loadedMods)
+            return loadedMods.TryGetValue(name, out mod);
+    }
 
     public IReadOnlyList<Mod> GetLoadedMods() {
-        lock (loadedMods) {
+        lock (loadedMods)
             return new List<Mod>(loadedMods.Values);
-        }
     }
 
     public Result SetActiveBuild(ActiveBuild build) {
@@ -104,7 +106,7 @@ public class ModManager {
                 if (manifest == null || !TryParseVersion(manifest.Version, out var version))
                     continue;
 
-                loadedMods.Add(manifest.Name, CreateModFromManifest(manifest, directory, version));
+                loadedMods[manifest.Name] = CreateModFromManifest(manifest, directory, version);
             }
 
             return Result<IReadOnlyList<Mod>>.Success(new List<Mod>(loadedMods.Values));
@@ -197,7 +199,7 @@ public class ModManager {
                 return Result<Mod>.Failure($"Mod at {repository} does not have a manifest.json file");
 
             if (!DeserializeModManifest(manifestPath)
-                    .Then(AssertModHasName)
+                    .Then(ValidateManifestProperties)
                     .TryGetValue(out var manifest, out message)
                 || !GetModVersion(manifest)
                     .Then(version => AssertVersionsEqual(version, expectedVersion, manifest.Name))
@@ -258,6 +260,19 @@ public class ModManager {
         return Result<GitHubAsset>.Failure($"Release {release.Name} does not have a plugin.zip file");
     }
 
+    private static Result<ModManifest> ValidateManifestProperties(ModManifest manifest) {
+        if (string.IsNullOrWhiteSpace(manifest.Name))
+            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a name");
+        
+        if (string.IsNullOrWhiteSpace(manifest.Version))
+            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a version");
+        
+        if (string.IsNullOrWhiteSpace(manifest.Repository))
+            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a repository");
+        
+        return Result<ModManifest>.Success(manifest);
+    }
+
     private static Result<Version> GetReleaseVersion(GitHubRelease release) {
         if (!TryParseVersion(release.TagName, out var version))
             return Result<Version>.Failure($"Tag for the latest release of mod {release.Name} is not a valid version string");
@@ -270,13 +285,6 @@ public class ModManager {
             return Result<Version>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
 
         return Result<Version>.Success(version);;
-    }
-    
-    private static Result<ModManifest> AssertModHasName(ModManifest manifest) {
-        if (string.IsNullOrWhiteSpace(manifest.Name))
-            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a name");
-        
-        return Result<ModManifest>.Success(manifest);
     }
 
     private static Result<Version> AssertVersionsEqual(Version version, Version expectedVersion, string modName) {
