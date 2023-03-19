@@ -49,6 +49,7 @@
         <Compile Include="GitHub\GitHubClient.cs" />
         <Compile Include="GitHub\GitHubRelease.cs" />
         <Compile Include="Mod.cs" />
+        <Compile Include="ManifestDependency.cs" />
         <Compile Include="ModDependency.cs" />
         <Compile Include="ModManifest.cs" />
         <Compile Include="ModManager.cs" />

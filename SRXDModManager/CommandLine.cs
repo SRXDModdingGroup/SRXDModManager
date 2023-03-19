@@ -22,6 +22,7 @@ public class CommandLine {
         root.AddCommand(CreateCommand("check", "Checks a mod for updates", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
             
+            command.AddCommand(CreateCommand("all", "Check all loaded mods for updates", command => command.SetHandler(CheckAllForUpdates)));
             command.AddArgument(nameArg);
             command.SetHandler(CheckForUpdate, nameArg);
         }));
@@ -54,9 +55,11 @@ public class CommandLine {
     public void Invoke(string[] args) => root.Invoke(args);
 
     public void SwitchBuild(ActiveBuild build) {
-        if (modManager.GetActiveBuild() == build)
+        if (!modManager.GetActiveBuild().TryGetValue(out var activeBuild, out string failureMessage))
+            Console.WriteLine($"Failed to get active build: {failureMessage}");
+        else if (activeBuild == build)
             Console.WriteLine($"{build} is already the active build");
-        else if (modManager.SetActiveBuild(build).TryGetValue(out string failureMessage))
+        else if (modManager.SetActiveBuild(build).TryGetValue(out failureMessage))
             Console.WriteLine($"Successfully switched builds to {build}");
         else
             Console.WriteLine($"Failed to switch build to {build}: {failureMessage}");
@@ -69,12 +72,28 @@ public class CommandLine {
             return;
         }
 
-        if (!modManager.NeedsUpdate(mod).Result.TryGetValue(out bool needsUpdate, out string failureMessage))
+        if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
-        else if (needsUpdate)
-            Console.WriteLine($"{mod.Name} is not up to date");
+        else if (latestVersion > mod.Version)
+            Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
         else
-            Console.WriteLine($"{mod.Name} is up to date");
+            Console.WriteLine($"{mod} is up to date");
+    }
+
+    public void CheckAllForUpdates() {
+        bool any = false;
+        
+        foreach (var mod in modManager.GetLoadedMods()) {
+            if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+            else if (latestVersion > mod.Version) {
+                Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
+                any = true;
+            }
+        }
+        
+        if (!any)
+            Console.WriteLine("All mods are up to date");
     }
 
     public void DownloadMod(string repository) {
@@ -124,23 +143,28 @@ public class CommandLine {
             return;
         }
 
-        if (!modManager.NeedsUpdate(mod).Result.TryGetValue(out bool needsUpdate, out string failureMessage))
-            Console.WriteLine($"Failed to check for update: {failureMessage}");
-        else if (needsUpdate)
+        if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+            Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+        else if (latestVersion > mod.Version)
             DownloadMod(mod.Repository);
         else
-            Console.WriteLine($"{mod.Name} is up to date");
+            Console.WriteLine($"{mod} is up to date");
     }
 
     public void UpdateAllMods() {
+        bool any = false;
+        
         foreach (var mod in modManager.GetLoadedMods()) {
-            if (!modManager.NeedsUpdate(mod).Result.TryGetValue(out bool needsUpdate, out string failureMessage))
-                Console.WriteLine($"Failed to check for update: {failureMessage}");
-            else if (needsUpdate)
+            if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+            else if (latestVersion > mod.Version) {
                 DownloadMod(mod.Repository);
-            else
-                Console.WriteLine($"{mod.Name} is up to date");
+                any = true;
+            }
         }
+        
+        if (!any)
+            Console.WriteLine("All mods are up to date");
     }
     
     private static Command CreateCommand(string name, string description, Action<Command> init = null) {

@@ -1,16 +1,17 @@
-﻿using Newtonsoft.Json;
+﻿using System;
 
 namespace SRXDModManager.Library; 
 
 public class ModDependency {
-    [JsonProperty("name")]
-    public string Name { get; set; }
+    public string Name { get; }
     
-    [JsonProperty("version")]
-    public string Version { get; set; }
+    public Version Version { get; }
     
-    [JsonProperty("repository")]
-    public string Repository { get; set; }
-    
-    internal ModDependency() { }
+    public string Repository { get; }
+
+    internal ModDependency(string name, Version version, string repository) {
+        Name = name;
+        Version = version;
+        Repository = repository;
+    }
 }

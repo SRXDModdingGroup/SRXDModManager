@@ -17,7 +17,7 @@ public class ModManifest {
     public string Repository { get; set; }
 
     [JsonProperty("dependencies")]
-    public ModDependency[] Dependencies { get; set; } = Array.Empty<ModDependency>();
+    public ManifestDependency[] Dependencies { get; set; } = Array.Empty<ManifestDependency>();
 
     internal ModManifest() { }
 }

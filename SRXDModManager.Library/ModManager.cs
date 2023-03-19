@@ -26,30 +26,15 @@ public class ModManager {
 
     public bool TryGetMod(string name, out Mod mod) => loadedMods.TryGetValue(name, out mod);
 
-    public ActiveBuild GetActiveBuild() {
-        if (!File.Exists(Path.Combine(gameDirectory, "UnityPlayer.dll")))
-            return ActiveBuild.Unknown;
-
-        bool monoExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_Mono.dll"));
-        bool il2CppExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll"));
-
-        if (!il2CppExists && monoExists)
-            return ActiveBuild.Il2Cpp;
-        
-        if (!monoExists && il2CppExists)
-            return ActiveBuild.Mono;
-
-        return ActiveBuild.Unknown;
+    public IReadOnlyList<Mod> GetLoadedMods() {
+        lock (loadedMods) {
+            return new List<Mod>(loadedMods.Values);
+        }
     }
 
     public Result SetActiveBuild(ActiveBuild build) {
-        if (build != ActiveBuild.Il2Cpp && build != ActiveBuild.Mono)
-            throw new ArgumentOutOfRangeException(nameof(build), "Must be Il2Cpp or Mono");
-        
-        var activeBuild = GetActiveBuild();
-
-        if (activeBuild == ActiveBuild.Unknown)
-            return Result.Failure("Current active build is unknown");
+        if (!GetActiveBuild().TryGetValue(out var activeBuild, out string failureMessage))
+            return Result.Failure(failureMessage);
         
         if (build == activeBuild)
             return Result.Success();
@@ -73,6 +58,9 @@ public class ModManager {
                     break;
             }
         }
+        catch (IOException e) {
+            return Result.Failure(e.Message);
+        }
         finally {
             if (File.Exists(tempPlayerPath))
                 File.Delete(tempPlayerPath);
@@ -81,48 +69,55 @@ public class ModManager {
         return Result.Success();
     }
 
+    public Result<ActiveBuild> GetActiveBuild() {
+        if (!VerifyGameDirectoryExists().Then(VerifyUnityPlayerExists).TryGetValue(out string failureMessage))
+            return Result<ActiveBuild>.Failure(failureMessage);
+
+        bool monoExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_Mono.dll"));
+        bool il2CppExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll"));
+
+        if (!il2CppExists && monoExists)
+            return Result<ActiveBuild>.Success(ActiveBuild.Il2Cpp);
+        
+        if (!monoExists && il2CppExists)
+            return Result<ActiveBuild>.Success(ActiveBuild.Mono);
+
+        return Result<ActiveBuild>.Failure("Active build cannot be determined");
+    }
+
     public Result<IReadOnlyList<Mod>> RefreshLoadedMods() {
-        loadedMods.Clear();
-        
-        if (!Directory.Exists(pluginsDirectory))
-            return Result<IReadOnlyList<Mod>>.Failure($"Directory \"{pluginsDirectory}\" was not found");
-        
-        foreach (string directory in Directory.GetDirectories(pluginsDirectory)) {
-            string manifestPath = Path.Combine(directory, "manifest.json");
-            
-            if (!File.Exists(manifestPath))
-                continue;
+        lock (loadedMods) {
+            loadedMods.Clear();
 
-            using var reader = File.OpenText(manifestPath);
-            var manifest = JsonConvert.DeserializeObject<ModManifest>(reader.ReadToEnd());
-            
-            if (manifest != null)
-                loadedMods.Add(manifest.Name, new Mod(directory, manifest));
+            if (!VerifyGameDirectoryExists().Then(VerifyPluginsDirectoryExists).TryGetValue(out string failureMessage))
+                return Result<IReadOnlyList<Mod>>.Failure(failureMessage);
+
+            foreach (string directory in Directory.GetDirectories(pluginsDirectory)) {
+                string manifestPath = Path.Combine(directory, "manifest.json");
+
+                if (!File.Exists(manifestPath))
+                    continue;
+
+                using var reader = File.OpenText(manifestPath);
+                var manifest = JsonConvert.DeserializeObject<ModManifest>(reader.ReadToEnd());
+
+                if (manifest == null || !TryParseVersion(manifest.Version, out var version))
+                    continue;
+
+                loadedMods.Add(manifest.Name, CreateModFromManifest(manifest, directory, version));
+            }
+
+            return Result<IReadOnlyList<Mod>>.Success(new List<Mod>(loadedMods.Values));
         }
-        
-        return Result<IReadOnlyList<Mod>>.Success(new List<Mod>(loadedMods.Values));
-    }
-    
-    public Result VerifyDirectoriesExist() {
-        if (!VerifyGameDirectoryExists()
-                .Then(VerifyPluginsDirectoryExists)
-                .TryGetValue(out string message))
-            return Result.Failure(message);
-
-        return Result.Success();
     }
 
-    public IReadOnlyList<Mod> GetLoadedMods() => new List<Mod>(loadedMods.Values);
-
-    public async Task<Result<bool>> NeedsUpdate(Mod mod) {
-        if (!GetModVersion(mod)
-                .TryGetValue(out var currentVersion, out string message)
-            || !(await gitHubClient.GetLatestRelease(mod.Repository))
+    public async Task<Result<Version>> GetLatestVersion(Mod mod) {
+        if (!(await gitHubClient.GetLatestRelease(mod.Repository))
                 .Then(GetReleaseVersion)
-                .TryGetValue(out var latestVersion, out message))
-            return Result<bool>.Failure(message);
+                .TryGetValue(out var latestVersion, out string message))
+            return Result<Version>.Failure(message);
 
-        return Result<bool>.Success(latestVersion > currentVersion);
+        return Result<Version>.Success(latestVersion);
     }
 
     public async Task<Result<Mod>> DownloadMod(string repository) {
@@ -136,21 +131,29 @@ public class ModManager {
                 .TryGetValue(out var mod, out message))
             return Result<Mod>.Failure(message);
         
-        loadedMods[mod.Name] = mod;
+        lock (loadedMods)
+            loadedMods[mod.Name] = mod;
 
         return Result<Mod>.Success(mod);
     }
 
     private Result VerifyGameDirectoryExists() {
-        if (!File.Exists(gameDirectory))
+        if (!Directory.Exists(gameDirectory))
             return Result.Failure($"Could not find game directory {gameDirectory}");
         
         return Result.Success();
     }
     
     private Result VerifyPluginsDirectoryExists() {
-        if (!File.Exists(pluginsDirectory))
+        if (!Directory.Exists(pluginsDirectory))
             return Result.Failure($"Could not find plugins directory {pluginsDirectory}. Ensure that BepInEx is installed");
+        
+        return Result.Success();
+    }
+
+    private Result VerifyUnityPlayerExists() {
+        if (!File.Exists(Path.Combine(gameDirectory, "UnityPlayer.dll")))
+            return Result.Failure("Could not find UnityPlayer.dll");
         
         return Result.Success();
     }
@@ -198,7 +201,7 @@ public class ModManager {
                     .TryGetValue(out var manifest, out message)
                 || !GetModVersion(manifest)
                     .Then(version => AssertVersionsEqual(version, expectedVersion, manifest.Name))
-                    .TryGetValue(out _, out message))
+                    .TryGetValue(out var version, out message))
                 return Result<Mod>.Failure(message);
 
             string directory = Path.Combine(pluginsDirectory, manifest.Name);
@@ -211,7 +214,7 @@ public class ModManager {
             foreach (string path in tempFiles)
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)));
 
-            return Result<Mod>.Success(new Mod(directory, manifest));
+            return Result<Mod>.Success(CreateModFromManifest(manifest, directory, version));
         }
         finally {
             foreach (string path in tempFiles) {
@@ -230,6 +233,20 @@ public class ModManager {
         }
 
         return Version.TryParse(text, out version);
+    }
+
+    private static Mod CreateModFromManifest(ModManifest manifest, string directory, Version version) {
+        var manifestDependencies = manifest.Dependencies;
+        var dependencies = new List<ModDependency>(manifestDependencies.Length);
+
+        for (int i = 0; i < dependencies.Count; i++) {
+            var manifestDependency = manifestDependencies[i];
+
+            if (TryParseVersion(manifestDependency.Version, out var dependencyVersion))
+                dependencies.Add(new ModDependency(manifestDependency.Name, dependencyVersion, manifest.Repository));
+        }
+
+        return new Mod(directory, manifest.Name, manifest.Description, version, manifest.Repository, dependencies.ToArray());
     }
     
     private static Result<GitHubAsset> GetZipAsset(GitHubRelease release) {
@@ -251,13 +268,6 @@ public class ModManager {
     private static Result<Version> GetModVersion(ModManifest manifest) {
         if (!TryParseVersion(manifest.Version, out var version))
             return Result<Version>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
-
-        return Result<Version>.Success(version);;
-    }
-
-    private static Result<Version> GetModVersion(Mod mod) {
-        if (!TryParseVersion(mod.Version, out var version))
-            return Result<Version>.Failure($"Mod {mod.Name} does not have a valid version");
 
         return Result<Version>.Success(version);;
     }

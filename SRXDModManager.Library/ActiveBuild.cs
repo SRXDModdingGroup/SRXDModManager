@@ -2,6 +2,5 @@
 
 public enum ActiveBuild {
     Il2Cpp,
-    Mono,
-    Unknown
+    Mono
 }
