@@ -1,7 +1,7 @@
 ﻿namespace SRXDModManager.Library; 
 
 public enum ActiveBuild {
-    Base,
+    Il2Cpp,
     Mono,
     Unknown
 }

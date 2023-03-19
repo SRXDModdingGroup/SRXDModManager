@@ -33,18 +33,21 @@ public class ModManager {
             return ActiveBuild.Unknown;
 
         bool monoExists = File.Exists(Path.Combine(gamePath, "UnityPlayer_Mono.dll"));
-        bool baseExists = File.Exists(Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll"));
+        bool il2CppExists = File.Exists(Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll"));
 
-        if (!baseExists && monoExists)
-            return ActiveBuild.Base;
+        if (!il2CppExists && monoExists)
+            return ActiveBuild.Il2Cpp;
         
-        if (!monoExists && baseExists)
+        if (!monoExists && il2CppExists)
             return ActiveBuild.Mono;
 
         return ActiveBuild.Unknown;
     }
 
     public Result SetActiveBuild(ActiveBuild build) {
+        if (build != ActiveBuild.Il2Cpp && build != ActiveBuild.Mono)
+            throw new ArgumentOutOfRangeException(nameof(build), "Must be Il2Cpp or Mono");
+        
         var activeBuild = GetActiveBuild();
 
         if (activeBuild == ActiveBuild.Unknown)
@@ -54,20 +57,27 @@ public class ModManager {
             return Result.Success();
         
         string activePlayerPath = Path.Combine(gamePath, "UnityPlayer.dll");
-        string basePlayerPath = Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll");
+        string tempPlayerPath = Path.Combine(gamePath, "UnityPlayer.dll.tmp");
+        string il2CppPlayerPath = Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll");
         string monoPlayerPath = Path.Combine(gamePath, "UnityPlayer_Mono.dll");
+        
+        File.Move(activePlayerPath, tempPlayerPath);
 
-        switch (build) {
-            case ActiveBuild.Base:
-                File.Move(activePlayerPath, monoPlayerPath);
-                File.Move(basePlayerPath, activePlayerPath);
-                break;
-            case ActiveBuild.Mono:
-                File.Move(activePlayerPath, basePlayerPath);
-                File.Move(monoPlayerPath, activePlayerPath);
-                break;
-            default:
-                throw new ArgumentOutOfRangeException(nameof(build), "Must be Base or Mono");
+        try {
+            switch (build) {
+                case ActiveBuild.Il2Cpp:
+                    File.Move(il2CppPlayerPath, activePlayerPath);
+                    File.Move(tempPlayerPath, monoPlayerPath);
+                    break;
+                case ActiveBuild.Mono:
+                    File.Move(monoPlayerPath, activePlayerPath);
+                    File.Move(tempPlayerPath, il2CppPlayerPath);
+                    break;
+            }
+        }
+        finally {
+            if (File.Exists(tempPlayerPath))
+                File.Delete(tempPlayerPath);
         }
         
         return Result.Success();
