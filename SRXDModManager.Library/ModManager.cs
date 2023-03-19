@@ -8,18 +8,16 @@ using Newtonsoft.Json;
 namespace SRXDModManager.Library; 
 
 public class ModManager {
-    private string gamePath;
-    private string bepInExPath;
-    private string pluginsPath;
+    private string gameDirectory;
+    private string pluginsDirectory;
     
     private GitHubClient gitHubClient;
     private JsonSerializer serializer;
     private SortedDictionary<string, Mod> loadedMods;
 
-    public ModManager(string gamePath) {
-        this.gamePath = gamePath;
-        bepInExPath = Path.Combine(gamePath, "BepInEx");
-        pluginsPath = Path.Combine(bepInExPath, "plugins");
+    public ModManager(string gameDirectory) {
+        this.gameDirectory = gameDirectory;
+        pluginsDirectory = Path.Combine(gameDirectory, "BepInEx", "plugins");
 
         gitHubClient = new GitHubClient();
         serializer = new JsonSerializer();
@@ -29,11 +27,11 @@ public class ModManager {
     public bool TryGetMod(string name, out Mod mod) => loadedMods.TryGetValue(name, out mod);
 
     public ActiveBuild GetActiveBuild() {
-        if (!File.Exists(Path.Combine(gamePath, "UnityPlayer.dll")))
+        if (!File.Exists(Path.Combine(gameDirectory, "UnityPlayer.dll")))
             return ActiveBuild.Unknown;
 
-        bool monoExists = File.Exists(Path.Combine(gamePath, "UnityPlayer_Mono.dll"));
-        bool il2CppExists = File.Exists(Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll"));
+        bool monoExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_Mono.dll"));
+        bool il2CppExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll"));
 
         if (!il2CppExists && monoExists)
             return ActiveBuild.Il2Cpp;
@@ -56,10 +54,10 @@ public class ModManager {
         if (build == activeBuild)
             return Result.Success();
         
-        string activePlayerPath = Path.Combine(gamePath, "UnityPlayer.dll");
-        string tempPlayerPath = Path.Combine(gamePath, "UnityPlayer.dll.tmp");
-        string il2CppPlayerPath = Path.Combine(gamePath, "UnityPlayer_IL2CPP.dll");
-        string monoPlayerPath = Path.Combine(gamePath, "UnityPlayer_Mono.dll");
+        string activePlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll");
+        string tempPlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll.tmp");
+        string il2CppPlayerPath = Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll");
+        string monoPlayerPath = Path.Combine(gameDirectory, "UnityPlayer_Mono.dll");
         
         File.Move(activePlayerPath, tempPlayerPath);
 
@@ -83,25 +81,34 @@ public class ModManager {
         return Result.Success();
     }
 
-    public Result RefreshLoadedMods() {
+    public Result<IReadOnlyList<Mod>> RefreshLoadedMods() {
         loadedMods.Clear();
         
-        if (!Directory.Exists(pluginsPath))
-            return Result.Failure($"Directory \"{pluginsPath}\" was not found");
+        if (!Directory.Exists(pluginsDirectory))
+            return Result<IReadOnlyList<Mod>>.Failure($"Directory \"{pluginsDirectory}\" was not found");
         
-        foreach (string directory in Directory.GetDirectories(pluginsPath)) {
+        foreach (string directory in Directory.GetDirectories(pluginsDirectory)) {
             string manifestPath = Path.Combine(directory, "manifest.json");
             
             if (!File.Exists(manifestPath))
                 continue;
 
             using var reader = File.OpenText(manifestPath);
-            var manifest = JsonConvert.DeserializeObject<Mod>(reader.ReadToEnd());
+            var manifest = JsonConvert.DeserializeObject<ModManifest>(reader.ReadToEnd());
             
             if (manifest != null)
-                loadedMods.Add(manifest.Name, manifest);
+                loadedMods.Add(manifest.Name, new Mod(directory, manifest));
         }
         
+        return Result<IReadOnlyList<Mod>>.Success(new List<Mod>(loadedMods.Values));
+    }
+    
+    public Result VerifyDirectoriesExist() {
+        if (!VerifyGameDirectoryExists()
+                .Then(VerifyPluginsDirectoryExists)
+                .TryGetValue(out string message))
+            return Result.Failure(message);
+
         return Result.Success();
     }
 
@@ -132,6 +139,32 @@ public class ModManager {
         return Result<Mod>.Success(mod);
     }
 
+    private Result VerifyGameDirectoryExists() {
+        if (!File.Exists(gameDirectory))
+            return Result.Failure($"Could not find game directory {gameDirectory}");
+        
+        return Result.Success();
+    }
+    
+    private Result VerifyPluginsDirectoryExists() {
+        if (!File.Exists(pluginsDirectory))
+            return Result.Failure($"Could not find plugins directory {pluginsDirectory}. Ensure that BepInEx is installed");
+        
+        return Result.Success();
+    }
+
+    private Result<ModManifest> DeserializeModManifest(string path) {
+        ModManifest manifest;
+        
+        using (var reader = new JsonTextReader(File.OpenText(path)))
+            manifest = serializer.Deserialize<ModManifest>(reader);
+        
+        if (manifest == null)
+            return Result<ModManifest>.Failure($"Could not deserialize manifest file for mod at {path}");
+        
+        return Result<ModManifest>.Success(manifest);
+    }
+
     private async Task<Result<Mod>> PerformDownload(GitHubAsset zipAsset, Version expectedVersion, string repository) {
         var tempFiles = new List<string>();
         
@@ -158,15 +191,15 @@ public class ModManager {
             if (!tempFiles.Contains(manifestPath))
                 return Result<Mod>.Failure($"Mod at {repository} does not have a manifest.json file");
 
-            if (!DeserializeMod(manifestPath)
+            if (!DeserializeModManifest(manifestPath)
                     .Then(AssertModHasName)
-                    .TryGetValue(out var mod, out message)
-                || !GetModVersion(mod)
-                    .Then(version => AssertVersionsEqual(version, expectedVersion, mod.Name))
+                    .TryGetValue(out var manifest, out message)
+                || !GetModVersion(manifest)
+                    .Then(version => AssertVersionsEqual(version, expectedVersion, manifest.Name))
                     .TryGetValue(out _, out message))
                 return Result<Mod>.Failure(message);
 
-            string directory = Path.Combine(pluginsPath, mod.Name);
+            string directory = Path.Combine(pluginsDirectory, manifest.Name);
 
             if (!Directory.Exists(directory))
                 Directory.CreateDirectory(directory);
@@ -174,7 +207,7 @@ public class ModManager {
             foreach (string path in tempFiles)
                 File.Copy(path, Path.Combine(directory, Path.GetFileName(path)));
 
-            return Result<Mod>.Success(mod);
+            return Result<Mod>.Success(new Mod(directory, manifest));
         }
         finally {
             foreach (string path in tempFiles) {
@@ -182,18 +215,6 @@ public class ModManager {
                     File.Delete(path);
             }
         }
-    }
-
-    private Result<Mod> DeserializeMod(string path) {
-        Mod manifest;
-        
-        using (var reader = new JsonTextReader(File.OpenText(path)))
-            manifest = serializer.Deserialize<Mod>(reader);
-        
-        if (manifest == null)
-            return Result<Mod>.Failure($"Could not deserialize manifest file for mod at {path}");
-        
-        return Result<Mod>.Success(manifest);
     }
 
     private static bool TryParseVersion(string text, out Version version) {
@@ -223,18 +244,25 @@ public class ModManager {
         return Result<Version>.Success(version);
     }
 
-    private static Result<Version> GetModVersion(Mod manifest) {
+    private static Result<Version> GetModVersion(ModManifest manifest) {
         if (!TryParseVersion(manifest.Version, out var version))
             return Result<Version>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
 
         return Result<Version>.Success(version);;
     }
+
+    private static Result<Version> GetModVersion(Mod mod) {
+        if (!TryParseVersion(mod.Version, out var version))
+            return Result<Version>.Failure($"Mod {mod.Name} does not have a valid version");
+
+        return Result<Version>.Success(version);;
+    }
     
-    private static Result<Mod> AssertModHasName(Mod manifest) {
+    private static Result<ModManifest> AssertModHasName(ModManifest manifest) {
         if (string.IsNullOrWhiteSpace(manifest.Name))
-            return Result<Mod>.Failure($"Manifest file for mod {manifest.Name} does not have a name");
+            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a name");
         
-        return Result<Mod>.Success(manifest);
+        return Result<ModManifest>.Success(manifest);
     }
 
     private static Result<Version> AssertVersionsEqual(Version version, Version expectedVersion, string modName) {

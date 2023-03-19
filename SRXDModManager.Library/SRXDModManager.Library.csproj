@@ -45,11 +45,12 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="ActiveBuild.cs" />
-        <Compile Include="GitHubAsset.cs" />
-        <Compile Include="GitHubClient.cs" />
-        <Compile Include="GitHubRelease.cs" />
-        <Compile Include="ModDependency.cs" />
+        <Compile Include="GitHub\GitHubAsset.cs" />
+        <Compile Include="GitHub\GitHubClient.cs" />
+        <Compile Include="GitHub\GitHubRelease.cs" />
         <Compile Include="Mod.cs" />
+        <Compile Include="ModDependency.cs" />
+        <Compile Include="ModManifest.cs" />
         <Compile Include="ModManager.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
         <Compile Include="Result.cs" />
