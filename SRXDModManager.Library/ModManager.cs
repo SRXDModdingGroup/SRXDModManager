@@ -175,19 +175,24 @@ public class ModManager {
     }
 
     private async Task<Result<Mod>> PerformDownload(GitHubAsset zipAsset, Version expectedVersion, string repository) {
-        var tempFiles = new List<string>();
-        
         if (!(await gitHubClient.DownloadAsset(zipAsset))
             .TryGetValue(out var stream, out string failureMessage))
             return Result<Mod>.Failure(failureMessage);
 
+        string tempDirectory = Path.Combine(Path.GetTempPath(), zipAsset.Name);
+
+        if (!Directory.Exists(tempDirectory))
+            Directory.CreateDirectory(tempDirectory);
+
         try {
             using (var archive = new ZipArchive(stream)) {
                 foreach (var entry in archive.Entries) {
-                    string path = Path.Combine(Path.GetTempPath(), entry.Name);
+                    string path = Path.Combine(tempDirectory, entry.FullName);
+                    string fileDirectory = Path.GetDirectoryName(path);
 
-                    tempFiles.Add(path);
-
+                    if (!string.IsNullOrWhiteSpace(fileDirectory) && !Directory.Exists(fileDirectory))
+                        Directory.CreateDirectory(fileDirectory);
+                    
                     using var entryStream = entry.Open();
                     using var fileStream = File.OpenWrite(path);
 
@@ -195,9 +200,9 @@ public class ModManager {
                 }
             }
 
-            string manifestPath = Path.Combine(Path.GetTempPath(), "manifest.json");
+            string manifestPath = Path.Combine(tempDirectory, "manifest.json");
 
-            if (!tempFiles.Contains(manifestPath))
+            if (!File.Exists(manifestPath))
                 return Result<Mod>.Failure($"Mod at {repository} does not have a manifest.json file");
 
             if (!DeserializeModManifest(manifestPath)
@@ -209,22 +214,17 @@ public class ModManager {
                 return Result<Mod>.Failure(failureMessage);
 
             string directory = Path.Combine(pluginsDirectory, manifest.Name);
-
+            
             if (Directory.Exists(directory))
                 Directory.Delete(directory, true);
-
-            Directory.CreateDirectory(directory);
-
-            foreach (string path in tempFiles)
-                File.Copy(path, Path.Combine(directory, Path.GetFileName(path)));
+            
+            Directory.Move(tempDirectory, directory);
 
             return Result<Mod>.Success(CreateModFromManifest(manifest, directory, version));
         }
         finally {
-            foreach (string path in tempFiles) {
-                if (File.Exists(path))
-                    File.Delete(path);
-            }
+            if (Directory.Exists(tempDirectory))
+                Directory.Delete(tempDirectory, true);
         }
     }
 
