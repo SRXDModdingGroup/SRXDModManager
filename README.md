@@ -1,6 +1,18 @@
 # SRXDModManager
 Command line mod manager for SRXD mods
 
+## Config
+If your game is not located at:
+```
+C:\Program Files (x86)\Steam\steamapps\common\Spin Rhythm
+```
+open config.json and replace the value of gameDirectory with the correct directory. Make sure the path consists of double backslashes (\\\\) instead of single backslashes (\\), like so:
+```.json
+{
+	"gameDirectory": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm"
+}
+```
+
 ## Commands
 
 ```
