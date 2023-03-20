@@ -8,17 +8,14 @@ using Newtonsoft.Json;
 namespace SRXDModManager.Library; 
 
 public class ModManager {
-    private string gameDirectory;
-    private string pluginsDirectory;
+    public string GameDirectory { get; set; }
     
     private GitHubClient gitHubClient;
     private JsonSerializer serializer;
     private SortedDictionary<string, Mod> loadedMods;
 
     public ModManager(string gameDirectory) {
-        this.gameDirectory = gameDirectory;
-        pluginsDirectory = Path.Combine(gameDirectory, "BepInEx", "plugins");
-
+        GameDirectory = gameDirectory;
         gitHubClient = new GitHubClient();
         serializer = new JsonSerializer();
         loadedMods = new SortedDictionary<string, Mod>();
@@ -41,10 +38,10 @@ public class ModManager {
         if (build == activeBuild)
             return Result.Success();
         
-        string activePlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll");
-        string tempPlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll.tmp");
-        string il2CppPlayerPath = Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll");
-        string monoPlayerPath = Path.Combine(gameDirectory, "UnityPlayer_Mono.dll");
+        string activePlayerPath = Path.Combine(GameDirectory, "UnityPlayer.dll");
+        string tempPlayerPath = Path.Combine(GameDirectory, "UnityPlayer.dll.tmp");
+        string il2CppPlayerPath = Path.Combine(GameDirectory, "UnityPlayer_IL2CPP.dll");
+        string monoPlayerPath = Path.Combine(GameDirectory, "UnityPlayer_Mono.dll");
         
         File.Move(activePlayerPath, tempPlayerPath);
 
@@ -60,8 +57,8 @@ public class ModManager {
                     break;
             }
         }
-        catch (IOException e) {
-            return Result.Failure(e.Message);
+        catch (IOException) {
+            return Result.Failure("An IO exception occurred");
         }
         finally {
             if (File.Exists(tempPlayerPath))
@@ -75,8 +72,8 @@ public class ModManager {
         if (!VerifyGameDirectoryExists().Then(VerifyUnityPlayerExists).TryGetValue(out string failureMessage))
             return Result<ActiveBuild>.Failure(failureMessage);
 
-        bool monoExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_Mono.dll"));
-        bool il2CppExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll"));
+        bool monoExists = File.Exists(Path.Combine(GameDirectory, "UnityPlayer_Mono.dll"));
+        bool il2CppExists = File.Exists(Path.Combine(GameDirectory, "UnityPlayer_IL2CPP.dll"));
 
         if (!il2CppExists && monoExists)
             return Result<ActiveBuild>.Success(ActiveBuild.Il2Cpp);
@@ -88,10 +85,14 @@ public class ModManager {
     }
 
     public Result<IReadOnlyList<Mod>> RefreshLoadedMods() {
+        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
+        
         lock (loadedMods) {
             loadedMods.Clear();
 
-            if (!VerifyGameDirectoryExists().Then(VerifyPluginsDirectoryExists).TryGetValue(out string failureMessage))
+            if (!VerifyGameDirectoryExists()
+                    .Then(VerifyPluginsDirectoryExists)
+                    .TryGetValue(out string failureMessage))
                 return Result<IReadOnlyList<Mod>>.Failure(failureMessage);
 
             foreach (string directory in Directory.GetDirectories(pluginsDirectory)) {
@@ -136,13 +137,15 @@ public class ModManager {
     }
 
     private Result VerifyGameDirectoryExists() {
-        if (!Directory.Exists(gameDirectory))
-            return Result.Failure($"Could not find game directory {gameDirectory}");
+        if (!Directory.Exists(GameDirectory))
+            return Result.Failure($"Could not find game directory {GameDirectory}");
         
         return Result.Success();
     }
     
     private Result VerifyPluginsDirectoryExists() {
+        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
+        
         if (!Directory.Exists(pluginsDirectory))
             return Result.Failure($"Could not find plugins directory {pluginsDirectory}. Ensure that BepInEx is installed");
         
@@ -150,7 +153,7 @@ public class ModManager {
     }
 
     private Result VerifyUnityPlayerExists() {
-        if (!File.Exists(Path.Combine(gameDirectory, "UnityPlayer.dll")))
+        if (!File.Exists(Path.Combine(GameDirectory, "UnityPlayer.dll")))
             return Result.Failure("Could not find UnityPlayer.dll");
         
         return Result.Success();
@@ -179,10 +182,13 @@ public class ModManager {
             .TryGetValue(out var stream, out string failureMessage))
             return Result<Mod>.Failure(failureMessage);
 
-        string tempDirectory = Path.Combine(Path.GetTempPath(), zipAsset.Name);
+        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
+        string tempDirectory = Path.Combine(pluginsDirectory, zipAsset.Name, ".tmp");
 
-        if (!Directory.Exists(tempDirectory))
-            Directory.CreateDirectory(tempDirectory);
+        if (Directory.Exists(tempDirectory))
+            Directory.Delete(tempDirectory, true);
+        
+        Directory.CreateDirectory(tempDirectory);
 
         try {
             using (var archive = new ZipArchive(stream)) {
@@ -192,7 +198,7 @@ public class ModManager {
 
                     if (!string.IsNullOrWhiteSpace(fileDirectory) && !Directory.Exists(fileDirectory))
                         Directory.CreateDirectory(fileDirectory);
-                    
+
                     using var entryStream = entry.Open();
                     using var fileStream = File.OpenWrite(path);
 
@@ -214,13 +220,16 @@ public class ModManager {
                 return Result<Mod>.Failure(failureMessage);
 
             string directory = Path.Combine(pluginsDirectory, manifest.Name);
-            
+
             if (Directory.Exists(directory))
                 Directory.Delete(directory, true);
-            
+
             Directory.Move(tempDirectory, directory);
 
             return Result<Mod>.Success(CreateModFromManifest(manifest, directory, version));
+        }
+        catch (IOException) {
+            return Result<Mod>.Failure("An IO exception occurred");
         }
         finally {
             if (Directory.Exists(tempDirectory))
