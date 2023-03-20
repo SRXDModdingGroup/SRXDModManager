@@ -30,11 +30,19 @@ internal class GitHubClient {
         if (!response.IsSuccessStatusCode)
             return Result<GitHubRelease>.Failure($"GET request to url {url} failed");
 
-        using var textReader = new JsonTextReader(new StreamReader(await response.Content.ReadAsStreamAsync()));
-        var release = serializer.Deserialize<GitHubRelease>(textReader);
-
+        GitHubRelease release;
+        
+        try {
+            using var textReader = new JsonTextReader(new StreamReader(await response.Content.ReadAsStreamAsync()));
+            
+            release = serializer.Deserialize<GitHubRelease>(textReader);
+        }
+        catch (JsonException) {
+            return Result<GitHubRelease>.Failure($"Could not deserialize GitHub release at {url}");
+        }
+        
         if (release == null)
-            return Result<GitHubRelease>.Failure("Could not deserialize GitHub release");
+            return Result<GitHubRelease>.Failure($"Could not deserialize GitHub release at {url}");
 
         return Result<GitHubRelease>.Success(release);
     }

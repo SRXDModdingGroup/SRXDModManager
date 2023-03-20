@@ -97,13 +97,9 @@ public class ModManager {
             foreach (string directory in Directory.GetDirectories(pluginsDirectory)) {
                 string manifestPath = Path.Combine(directory, "manifest.json");
 
-                if (!File.Exists(manifestPath))
-                    continue;
-
-                using var reader = File.OpenText(manifestPath);
-                var manifest = JsonConvert.DeserializeObject<ModManifest>(reader.ReadToEnd());
-
-                if (manifest == null || !TryParseVersion(manifest.Version, out var version))
+                if (!File.Exists(manifestPath)
+                    || !DeserializeModManifest(manifestPath).TryGetValue(out var manifest, out _)
+                    || !TryParseVersion(manifest.Version, out var version))
                     continue;
 
                 loadedMods[manifest.Name] = CreateModFromManifest(manifest, directory, version);
@@ -162,10 +158,16 @@ public class ModManager {
 
     private Result<ModManifest> DeserializeModManifest(string path) {
         ModManifest manifest;
-        
-        using (var reader = new JsonTextReader(File.OpenText(path)))
+
+        try {
+            using var reader = new JsonTextReader(File.OpenText(path));
+            
             manifest = serializer.Deserialize<ModManifest>(reader);
-        
+        }
+        catch (JsonException) {
+            return Result<ModManifest>.Failure($"Could not deserialize manifest file for mod at {path}");
+        }
+
         if (manifest == null)
             return Result<ModManifest>.Failure($"Could not deserialize manifest file for mod at {path}");
         
