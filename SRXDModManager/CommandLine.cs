@@ -41,7 +41,13 @@ public class CommandLine {
         
         root.AddCommand(CreateCommand("exit", "Exits the application"));
         
-        root.AddCommand(CreateCommand("list", "Lists all loaded mods", command => { command.SetHandler(ListMods); }));
+        root.AddCommand(CreateCommand("info", "Gets detailed information about a mod", command => {
+            var nameArg = new Argument<string>("name", "The name of the mod");
+            
+            command.AddCommand(CreateCommand("all", "Gets info for all loaded mods", command => command.SetHandler(GetAllModInfo)));
+            command.AddArgument(nameArg);
+            command.SetHandler(GetModInfo, nameArg);
+        }));
         
         root.AddCommand(CreateCommand("refresh", "Refreshes the list of downloaded mods", command => { command.SetHandler(RefreshMods); }));
         
@@ -112,16 +118,21 @@ public class CommandLine {
             Console.WriteLine($"Failed to download mod at {repository}: {failureMessage}");
     }
 
-    public void ListMods() {
+    public void GetModInfo(string name) {
+        if (!modManager.TryGetMod(name, out var mod))
+            Console.WriteLine($"{name} not found");
+        else
+            Console.WriteLine($"{mod}: {mod.Description}");
+    }
+
+    public void GetAllModInfo() {
         var mods = modManager.GetLoadedMods();
         
         if (mods.Count == 0)
             Console.WriteLine("No mods found");
         else {
-            Console.WriteLine($"Found {mods.Count} mod{(mods.Count > 1 ? "s" : string.Empty)}:");
-            
             foreach (var mod in mods)
-                Console.WriteLine(mod);
+                Console.WriteLine($"{mod}: {mod.Description}");
         }
     }
 
