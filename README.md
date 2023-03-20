@@ -4,9 +4,9 @@ Command line mod manager for SRXD mods
 ## Commands
 
 ```
-build il2cpp           Switches SRXD to the IL2CPP build. Mods will not be loadeed when using this build
+build il2cpp           Switches SRXD to the IL2CPP build. Mods will not be loaded when using this build
 
-build mono             Switches SRXD to the Mono build. Mods will be loadeed when using this build
+build mono             Switches SRXD to the Mono build. Mods will be loaded when using this build
 
 check <name>           Checks a mod for updates
 
