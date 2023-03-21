@@ -12,6 +12,12 @@ public class CommandLine {
         this.controller = controller;
         root = new RootCommand();
         
+        CreateCommands();
+    }
+
+    public void Invoke(string[] args) => root.Invoke(args);
+
+    private void CreateCommands() {
         root.AddCommand(CreateCommand("build", "Sets which build of the game to use", command => {
             command.AddCommand(CreateCommand("il2cpp", "The IL2CPP build. Mods will not be loaded when using this build",
                 command => command.SetHandler(() => controller.SwitchBuild(ActiveBuild.Il2Cpp))));
@@ -65,11 +71,7 @@ public class CommandLine {
             command.SetHandler(controller.UpdateMod, nameArg, dependenciesOption);
         }));
     }
-
-    public void Invoke(string[] args) => root.Invoke(args);
-
     
-
     private static Command CreateCommand(string name, string description, Action<Command> init = null) {
         var command = new Command(name, description);
 
