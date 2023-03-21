@@ -47,23 +47,24 @@ public class DownloadQueue {
     }
     
     private async Task<IReadOnlyList<DownloadRequest>> PerformDownload(string repository, bool resolveDependencies) {
-        if (!(await modManager.DownloadMod(repository)).TryGetValue(out var mod, out string failureMessage))
+        if (!(await modManager.DownloadMod(repository)).TryGetValue(out var mod, out string failureMessage)) {
             Console.WriteLine($"Failed to download mod at {repository}: {failureMessage}");
-        else if (!resolveDependencies)
-            Console.WriteLine($"Successfully downloaded {mod}");
-        else {
-            Console.WriteLine($"Successfully downloaded {mod}");
             
-            var dependencies = modManager.GetMissingDependencies(mod);
-            var requests = new DownloadRequest[dependencies.Count];
-
-            for (int i = 0; i < dependencies.Count; i++)
-                requests[i] = new DownloadRequest(dependencies[i].Repository, true);
-
-            return requests;
+            return Array.Empty<DownloadRequest>();
         }
         
-        return Array.Empty<DownloadRequest>();
+        Console.WriteLine($"Successfully downloaded {mod}");
+
+        if (!resolveDependencies)
+            return Array.Empty<DownloadRequest>();
+            
+        var dependencies = modManager.GetMissingDependencies(mod);
+        var requests = new DownloadRequest[dependencies.Count];
+
+        for (int i = 0; i < dependencies.Count; i++)
+            requests[i] = new DownloadRequest(dependencies[i].Repository, true);
+
+        return requests;
     }
 
     private static bool IsValidRepository(string repository) {

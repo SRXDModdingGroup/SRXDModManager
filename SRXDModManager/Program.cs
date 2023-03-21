@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Reflection;
 using System.Text;
 using SRXDModManager.Library;
 
@@ -10,9 +8,10 @@ namespace SRXDModManager;
 internal class Program {
     public static void Main() {
         var modManager = new ModManager("C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm");
-        var commandLine = new CommandLine(modManager);
+        var actions = new Actions(modManager);
+        var commandLine = new CommandLine(actions);
         
-        commandLine.RefreshMods();
+        actions.RefreshMods();
 
         while (true) {
             Console.Write("> SRXDModManager ");
