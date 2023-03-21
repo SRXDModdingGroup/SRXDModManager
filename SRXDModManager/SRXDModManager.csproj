@@ -59,6 +59,8 @@
     <ItemGroup>
         <Compile Include="CommandLine.cs" />
         <Compile Include="Config.cs" />
+        <Compile Include="DownloadQueue.cs" />
+        <Compile Include="DownloadRequest.cs" />
         <Compile Include="Program.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
     </ItemGroup>

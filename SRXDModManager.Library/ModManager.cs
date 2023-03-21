@@ -2,23 +2,38 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace SRXDModManager.Library; 
 
 public class ModManager {
-    public string GameDirectory { get; set; }
-    
+    public string GameDirectory { get; private set; }
+
+    private string pluginsDirectory;
     private GitHubClient gitHubClient;
     private JsonSerializer serializer;
     private SortedDictionary<string, Mod> loadedMods;
+    private int tempCounter;
 
     public ModManager(string gameDirectory) {
         GameDirectory = gameDirectory;
+        pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
         gitHubClient = new GitHubClient();
         serializer = new JsonSerializer();
         loadedMods = new SortedDictionary<string, Mod>();
+    }
+
+    public void ChangeGameDirectory(string gameDirectory) {
+        if (gameDirectory == GameDirectory)
+            return;
+        
+        GameDirectory = gameDirectory;
+        pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
+        
+        lock (loadedMods)
+            loadedMods.Clear();
     }
 
     public bool TryGetMod(string name, out Mod mod) {
@@ -29,6 +44,20 @@ public class ModManager {
     public IReadOnlyList<Mod> GetLoadedMods() {
         lock (loadedMods)
             return new List<Mod>(loadedMods.Values);
+    }
+
+    public IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod) {
+        var missing = new Dictionary<string, ModDependency>();
+
+        lock (loadedMods) {
+            foreach (var dependency in mod.Dependencies) {
+                if ((!loadedMods.TryGetValue(dependency.Name, out var foundMod) || dependency.Version > foundMod.Version)
+                    && (!missing.TryGetValue(dependency.Name, out var existingDependency) || dependency.Version > existingDependency.Version))
+                    missing.Add(dependency.Name, dependency);
+            }
+        }
+
+        return new List<ModDependency>(missing.Values);
     }
 
     public Result SetActiveBuild(ActiveBuild build) {
@@ -85,8 +114,6 @@ public class ModManager {
     }
 
     public Result<IReadOnlyList<Mod>> RefreshLoadedMods() {
-        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
-        
         lock (loadedMods) {
             loadedMods.Clear();
 
@@ -144,8 +171,6 @@ public class ModManager {
     }
     
     private Result VerifyPluginsDirectoryExists() {
-        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
-        
         if (!Directory.Exists(pluginsDirectory))
             return Result.Failure($"Could not find plugins directory {pluginsDirectory}. Ensure that BepInEx is installed");
         
@@ -181,9 +206,8 @@ public class ModManager {
         if (!(await gitHubClient.DownloadAsset(zipAsset))
             .TryGetValue(out var stream, out string failureMessage))
             return Result<Mod>.Failure(failureMessage);
-
-        string pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
-        string tempDirectory = Path.Combine(pluginsDirectory, zipAsset.Name, ".tmp");
+        
+        string tempDirectory = Path.Combine(pluginsDirectory, $"{zipAsset}_{Interlocked.Increment(ref tempCounter)}.tmp");
 
         if (Directory.Exists(tempDirectory))
             Directory.Delete(tempDirectory, true);
@@ -252,11 +276,11 @@ public class ModManager {
         var manifestDependencies = manifest.Dependencies;
         var dependencies = new List<ModDependency>(manifestDependencies.Length);
 
-        for (int i = 0; i < dependencies.Count; i++) {
+        for (int i = 0; i < manifestDependencies.Length; i++) {
             var manifestDependency = manifestDependencies[i];
 
             if (TryParseVersion(manifestDependency.Version, out var dependencyVersion))
-                dependencies.Add(new ModDependency(manifestDependency.Name, dependencyVersion, manifest.Repository));
+                dependencies.Add(new ModDependency(manifestDependency.Name, dependencyVersion, manifestDependency.Repository));
         }
 
         return new Mod(directory, manifest.Name, manifest.Description, version, manifest.Repository, dependencies.ToArray());
@@ -295,7 +319,7 @@ public class ModManager {
         if (!TryParseVersion(manifest.Version, out var version))
             return Result<Version>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
 
-        return Result<Version>.Success(version);;
+        return Result<Version>.Success(version);
     }
 
     private static Result<Version> AssertVersionsEqual(Version version, Version expectedVersion, string modName) {

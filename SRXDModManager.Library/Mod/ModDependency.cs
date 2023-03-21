@@ -14,4 +14,6 @@ public class ModDependency {
         Version = version;
         Repository = repository;
     }
+
+    public override string ToString() => $"{Name} {Version}";
 }

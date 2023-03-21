@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.CommandLine;
 using System.IO;
 using System.Linq;
@@ -24,10 +25,10 @@ public class CommandLine {
                 command => command.SetHandler(() => SwitchBuild(ActiveBuild.Mono))));
         }));
         
-        root.AddCommand(CreateCommand("check", "Checks a mod for updates", command => {
+        root.AddCommand(CreateCommand("check", "Checks a mod for updates or missing dependencies", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
             
-            command.AddCommand(CreateCommand("all", "Checks all loaded mods for updates", command => command.SetHandler(CheckAllForUpdates)));
+            command.AddCommand(CreateCommand("all", "Checks all loaded mods for updates or missing dependencies", command => command.SetHandler(CheckAllForUpdates)));
             command.AddArgument(nameArg);
             command.SetHandler(CheckForUpdate, nameArg);
         }));
@@ -37,9 +38,11 @@ public class CommandLine {
                 "The repository from which to get the latest release. If the repository is owned by SRXDModdingGroup, " +
                 "you only need to specify the repository name. If the repository is under a different group, specify " +
                 "both the owner and name, separated by a slash (/)");
+            var dependenciesOption = new Option<bool>(new[] { "--dependencies", "-d" }, "Also download missing dependencies");
             
             command.AddArgument(repositoryArg);
-            command.SetHandler(DownloadMod, repositoryArg);
+            command.AddOption(dependenciesOption);
+            command.SetHandler(DownloadMod, repositoryArg, dependenciesOption);
         }));
         
         root.AddCommand(CreateCommand("exit", "Exits the application"));
@@ -56,10 +59,16 @@ public class CommandLine {
         
         root.AddCommand(CreateCommand("update", "Updates a mod if there is a new version available", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
+            var dependenciesOption = new Option<bool>(new[] { "--dependencies", "-d" }, "Also download missing dependencies");
             
-            command.AddCommand(CreateCommand("all", "Updates all loaded mods", command => command.SetHandler(UpdateAllMods)));
+            command.AddCommand(CreateCommand("all", "Updates all loaded mods", command => {
+                command.AddOption(dependenciesOption);
+                command.SetHandler(UpdateAllMods, dependenciesOption);
+            }));
+            
             command.AddArgument(nameArg);
-            command.SetHandler(UpdateMod, nameArg);
+            command.AddOption(dependenciesOption);
+            command.SetHandler(UpdateMod, nameArg, dependenciesOption);
         }));
     }
 
@@ -83,8 +92,18 @@ public class CommandLine {
             Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
-        else
-            Console.WriteLine($"{mod} is up to date");
+        else {
+            var missingDependencies = modManager.GetMissingDependencies(mod);
+
+            if (missingDependencies.Count > 0) {
+                Console.WriteLine($"{mod} is missing dependencies:");
+
+                foreach (var dependency in missingDependencies)
+                    Console.WriteLine(dependency);
+            }
+            else
+                Console.WriteLine($"{mod} is up to date");
+        }
     }
 
     public void CheckAllForUpdates() {
@@ -104,6 +123,8 @@ public class CommandLine {
                 Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
             else if (latestVersion > mod.Version)
                 Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
+            else if (modManager.GetMissingDependencies(mod).Count > 0)
+                Console.WriteLine($"{mod} is missing dependencies");
             else
                 return false;
 
@@ -111,14 +132,14 @@ public class CommandLine {
         }
     }
 
-    public void DownloadMod(string repository) {
+    public void DownloadMod(string repository, bool resolveDependencies) {
         if (!repository.Contains("/"))
             repository = "SRXDModdingGroup/" + repository;
-                
-        if (modManager.DownloadMod(repository).Result.TryGetValue(out var mod, out string failureMessage))
-            Console.WriteLine($"Successfully downloaded {mod}");
-        else
-            Console.WriteLine($"Failed to download mod at {repository}: {failureMessage}");
+
+        var queue = new DownloadQueue(modManager);
+        
+        queue.Enqueue(new DownloadRequest(repository, resolveDependencies));
+        queue.WaitAll();
     }
 
     public void GetModInfo(string name) {
@@ -162,7 +183,7 @@ public class CommandLine {
             gameDirectory = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm";
         }
 
-        modManager.GameDirectory = gameDirectory;
+        modManager.ChangeGameDirectory(gameDirectory);
 
         if (!modManager.RefreshLoadedMods().TryGetValue(out var mods, out string failureMessage)) {
             Console.WriteLine($"Failed to load mods: {failureMessage}");
@@ -180,47 +201,60 @@ public class CommandLine {
         }
     }
 
-    public void UpdateMod(string name) {
+    public void UpdateMod(string name, bool resolveDependencies) {
         if (!modManager.TryGetMod(name, out var mod)) {
             Console.WriteLine($"{name} not found");
             
             return;
         }
+        
+        bool needsUpdate = PerformCheckForUpdate(mod).Result;
 
-        if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
-            Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
-        else if (latestVersion > mod.Version)
-            DownloadMod(mod.Repository);
-        else
-            Console.WriteLine($"{mod} is up to date");
+        if (!needsUpdate)
+            return;
+        
+        var queue = new DownloadQueue(modManager);
+            
+        queue.Enqueue(new DownloadRequest(mod.Repository, resolveDependencies));
+        queue.WaitAll();
     }
 
-    public void UpdateAllMods() {
+    public void UpdateAllMods(bool resolveDependencies) {
         var mods = modManager.GetLoadedMods();
-        var tasks = new Task<bool>[mods.Count];
+        var updateChecks = new Task<bool>[mods.Count];
 
-        for (int i = 0; i < mods.Count; i++)
-            tasks[i] = UpdateOne(mods[i]);
+        for (int i = 0; i < updateChecks.Length; i++)
+            updateChecks[i] = PerformCheckForUpdate(mods[i]);
 
-        Task.WaitAll(tasks);
+        var requests = new List<DownloadRequest>();
 
-        if (!tasks.Any(task => task.Result))
-            Console.WriteLine("All mods are up to date");
-
-        async Task<bool> UpdateOne(Mod mod) {
-            if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage))
-                Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
-            else if (mod.Version >= latestVersion)
-                return false;
-            else if (!(await modManager.DownloadMod(mod.Repository)).TryGetValue(out var newMod, out failureMessage))
-                Console.WriteLine($"Failed to update {mod}: {failureMessage}");
-            else
-                Console.WriteLine($"Successfully downloaded {newMod}");
-
-            return true;
+        for (int i = 0; i < updateChecks.Length; i++) {
+            if (updateChecks[i].Result)
+                requests.Add(new DownloadRequest(mods[i].Repository, resolveDependencies));
         }
+
+        if (requests.Count == 0)
+            return;
+        
+        var queue = new DownloadQueue(modManager);
+
+        foreach (var request in requests)
+            queue.Enqueue(request);
+
+        queue.WaitAll();
     }
-    
+
+    private async Task<bool> PerformCheckForUpdate(Mod mod) {
+        if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage))
+            Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
+        else if (mod.Version >= latestVersion)
+            Console.WriteLine($"{mod} is up to date");
+        else
+            return true;
+
+        return false;
+    }
+
     private static Command CreateCommand(string name, string description, Action<Command> init = null) {
         var command = new Command(name, description);
 
