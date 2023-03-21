@@ -37,4 +37,6 @@ refresh                Refreshes the list of downloaded mods
 update <name>          Updates a mod if there is a new version available
 
 update all             Updates all loaded mods, if updates are available
+
+For all download and update commands, you can append the -d or --dependencies option to also download any missing dependencies
 ```
