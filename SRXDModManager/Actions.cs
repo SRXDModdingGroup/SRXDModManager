@@ -30,7 +30,7 @@ public class Actions {
     public void CheckForUpdate(string name) {
         if (!modManager.TryGetMod(name, out var mod))
             Console.WriteLine($"{name} not found");
-        else if (!modManager.GetLatestVersion(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+        else if (!modManager.GetLatestModInfo(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
@@ -176,7 +176,7 @@ public class Actions {
     }
     
     private async Task<bool> PerformCheckForUpdate(Mod mod) {
-        if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage))
+        if (!(await modManager.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
@@ -192,7 +192,7 @@ public class Actions {
     }
 
     private async Task<DownloadRequest[]> PerformGetUpdate(Mod mod, bool resolveDependencies) {
-        if (!(await modManager.GetLatestVersion(mod)).TryGetValue(out var latestVersion, out string failureMessage)) {
+        if (!(await modManager.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage)) {
             Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
             
             return Array.Empty<DownloadRequest>();

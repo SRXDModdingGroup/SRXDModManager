@@ -1,10 +1,8 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
-using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace SRXDModManager.Library; 
 
@@ -13,16 +11,15 @@ public class ModManager {
 
     private string pluginsDirectory;
     private GitHubClient gitHubClient;
-    private JsonSerializer serializer;
     private SortedDictionary<string, Mod> loadedMods;
-    private int tempCounter;
+    private ConcurrentQueue<DownloadRequest> requestQueue;
 
     public ModManager(string gameDirectory) {
         GameDirectory = gameDirectory;
         pluginsDirectory = Path.Combine(GameDirectory, "BepInEx", "plugins");
         gitHubClient = new GitHubClient();
-        serializer = new JsonSerializer();
         loadedMods = new SortedDictionary<string, Mod>();
+        requestQueue = new ConcurrentQueue<DownloadRequest>();
     }
 
     public void ChangeGameDirectory(string gameDirectory) {
@@ -47,26 +44,17 @@ public class ModManager {
     }
 
     public IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod) {
-        var missing = new Dictionary<string, ModDependency>();
-
-        lock (loadedMods) {
-            foreach (var dependency in mod.Dependencies) {
-                if ((!loadedMods.TryGetValue(dependency.Name, out var foundMod) || dependency.Version > foundMod.Version)
-                    && (!missing.TryGetValue(dependency.Name, out var existingDependency) || dependency.Version > existingDependency.Version))
-                    missing.Add(dependency.Name, dependency);
-            }
-        }
-
-        return new List<ModDependency>(missing.Values);
+        lock (loadedMods)
+            return new List<ModDependency>(GetMissingDependencies(mod, loadedMods).Values);
     }
 
-    public Result SetActiveBuild(ActiveBuild build) {
+    public Result<SetActiveBuildResult> SetActiveBuild(ActiveBuild build) {
         if (!GetActiveBuild().TryGetValue(out var activeBuild, out string failureMessage))
-            return Result.Failure(failureMessage);
-        
+            return Result<SetActiveBuildResult>.Failure(failureMessage);
+
         if (build == activeBuild)
-            return Result.Success();
-        
+            return Result<SetActiveBuildResult>.Success(SetActiveBuildResult.AlreadyActiveBuild);
+
         string activePlayerPath = Path.Combine(GameDirectory, "UnityPlayer.dll");
         string tempPlayerPath = Path.Combine(GameDirectory, "UnityPlayer.dll.tmp");
         string il2CppPlayerPath = Path.Combine(GameDirectory, "UnityPlayer_IL2CPP.dll");
@@ -86,15 +74,15 @@ public class ModManager {
                     break;
             }
         }
-        catch (IOException) {
-            return Result.Failure("An IO exception occurred");
+        catch (IOException e) {
+            return Result<SetActiveBuildResult>.Failure(e.Message);
         }
         finally {
             if (File.Exists(tempPlayerPath))
                 File.Delete(tempPlayerPath);
         }
         
-        return Result.Success();
+        return Result<SetActiveBuildResult>.Success(SetActiveBuildResult.Success);
     }
 
     public Result<ActiveBuild> GetActiveBuild() {
@@ -126,40 +114,36 @@ public class ModManager {
                 string manifestPath = Path.Combine(directory, "manifest.json");
 
                 if (!File.Exists(manifestPath)
-                    || !DeserializeModManifest(manifestPath).TryGetValue(out var manifest, out _)
-                    || !TryParseVersion(manifest.Version, out var version))
+                    || !Util.DeserializeModManifest(File.ReadAllText(manifestPath))
+                        .Then(Util.CreateModFromManifest)
+                        .TryGetValue(out var mod, out _))
                     continue;
 
-                loadedMods[manifest.Name] = CreateModFromManifest(manifest, directory, version);
+                loadedMods[mod.Name] = mod;
             }
 
             return Result<IReadOnlyList<Mod>>.Success(new List<Mod>(loadedMods.Values));
         }
     }
 
-    public async Task<Result<Version>> GetLatestVersion(Mod mod) {
-        if (!(await gitHubClient.GetLatestRelease(mod.Repository))
-                .Then(GetReleaseVersion)
-                .TryGetValue(out var latestVersion, out string failureMessage))
-            return Result<Version>.Failure(failureMessage);
-
-        return Result<Version>.Success(latestVersion);
+    public async Task<Result<Mod>> DownloadMod(Repository repository) {
+        var request = new DownloadRequest(repository, pluginsDirectory, gitHubClient);
+        
+        requestQueue.Enqueue(request);
+        
+        return await request.GetResult();
     }
 
-    public async Task<Result<Mod>> DownloadMod(string repository) {
+    public async Task<Result<Mod>> GetLatestModInfo(Repository repository) {
         if (!(await gitHubClient.GetLatestRelease(repository))
-                .TryGetValue(out var release, out string failureMessage)
-            || !GetReleaseVersion(release)
-                .TryGetValue(out var expectedVersion, out failureMessage)
-            || !GetZipAsset(release)
-                .TryGetValue(out var zipAsset, out failureMessage)
-            || !(await PerformDownload(zipAsset, expectedVersion, repository))
+            .Then(Util.GetManifestAsset)
+            .TryGetValue(out var asset, out string failureMessage)
+            || !(await gitHubClient.DownloadAssetAsString(asset))
+                .Then(Util.DeserializeModManifest)
+                .Then(Util.CreateModFromManifest)
                 .TryGetValue(out var mod, out failureMessage))
             return Result<Mod>.Failure(failureMessage);
         
-        lock (loadedMods)
-            loadedMods[mod.Name] = mod;
-
         return Result<Mod>.Success(mod);
     }
 
@@ -183,149 +167,20 @@ public class ModManager {
         
         return Result.Success();
     }
-
-    private Result<ModManifest> DeserializeModManifest(string path) {
-        ModManifest manifest;
-
-        try {
-            using var reader = new JsonTextReader(File.OpenText(path));
-            
-            manifest = serializer.Deserialize<ModManifest>(reader);
-        }
-        catch (JsonException) {
-            return Result<ModManifest>.Failure($"Could not deserialize manifest file for mod at {path}");
-        }
-
-        if (manifest == null)
-            return Result<ModManifest>.Failure($"Could not deserialize manifest file for mod at {path}");
+    
+    private static Dictionary<string, ModDependency> GetMissingDependencies(Mod mod, IReadOnlyDictionary<string, Mod> mods) {
+        var missing = new Dictionary<string, ModDependency>();
         
-        return Result<ModManifest>.Success(manifest);
-    }
+        AddMissingDependencies(missing, mod, mods);
 
-    private async Task<Result<Mod>> PerformDownload(GitHubAsset zipAsset, Version expectedVersion, string repository) {
-        if (!(await gitHubClient.DownloadAsset(zipAsset))
-            .TryGetValue(out var stream, out string failureMessage))
-            return Result<Mod>.Failure(failureMessage);
-        
-        string tempDirectory = Path.Combine(pluginsDirectory, $"{zipAsset}_{Interlocked.Increment(ref tempCounter)}.tmp");
-
-        if (Directory.Exists(tempDirectory))
-            Directory.Delete(tempDirectory, true);
-        
-        Directory.CreateDirectory(tempDirectory);
-
-        try {
-            using (var archive = new ZipArchive(stream)) {
-                foreach (var entry in archive.Entries) {
-                    string path = Path.Combine(tempDirectory, entry.FullName);
-                    string fileDirectory = Path.GetDirectoryName(path);
-
-                    if (!string.IsNullOrWhiteSpace(fileDirectory) && !Directory.Exists(fileDirectory))
-                        Directory.CreateDirectory(fileDirectory);
-
-                    using var entryStream = entry.Open();
-                    using var fileStream = File.OpenWrite(path);
-
-                    await entryStream.CopyToAsync(fileStream);
-                }
-            }
-
-            string manifestPath = Path.Combine(tempDirectory, "manifest.json");
-
-            if (!File.Exists(manifestPath))
-                return Result<Mod>.Failure($"Mod at {repository} does not have a manifest.json file");
-
-            if (!DeserializeModManifest(manifestPath)
-                    .Then(ValidateManifestProperties)
-                    .TryGetValue(out var manifest, out failureMessage)
-                || !GetModVersion(manifest)
-                    .Then(version => AssertVersionsEqual(version, expectedVersion, manifest.Name))
-                    .TryGetValue(out var version, out failureMessage))
-                return Result<Mod>.Failure(failureMessage);
-
-            string directory = Path.Combine(pluginsDirectory, manifest.Name);
-
-            if (Directory.Exists(directory))
-                Directory.Delete(directory, true);
-
-            Directory.Move(tempDirectory, directory);
-
-            return Result<Mod>.Success(CreateModFromManifest(manifest, directory, version));
-        }
-        catch (IOException) {
-            return Result<Mod>.Failure("An IO exception occurred");
-        }
-        finally {
-            if (Directory.Exists(tempDirectory))
-                Directory.Delete(tempDirectory, true);
-        }
-    }
-
-    private static bool TryParseVersion(string text, out Version version) {
-        for (int i = text.Length - 1; i >= 0; i--) {
-            char character = text[i];
-
-            if (!char.IsDigit(character) && character != '.')
-                return Version.TryParse(text.Substring(i + 1), out version);
-        }
-
-        return Version.TryParse(text, out version);
-    }
-
-    private static Mod CreateModFromManifest(ModManifest manifest, string directory, Version version) {
-        var manifestDependencies = manifest.Dependencies;
-        var dependencies = new List<ModDependency>(manifestDependencies.Length);
-
-        for (int i = 0; i < manifestDependencies.Length; i++) {
-            var manifestDependency = manifestDependencies[i];
-
-            if (TryParseVersion(manifestDependency.Version, out var dependencyVersion))
-                dependencies.Add(new ModDependency(manifestDependency.Name, dependencyVersion, manifestDependency.Repository));
-        }
-
-        return new Mod(directory, manifest.Name, manifest.Description, version, manifest.Repository, dependencies.ToArray());
+        return missing;
     }
     
-    private static Result<GitHubAsset> GetZipAsset(GitHubRelease release) {
-        foreach (var asset in release.Assets) {
-            if (asset.Name == "plugin.zip")
-                return Result<GitHubAsset>.Success(asset);
+    private static void AddMissingDependencies(Dictionary<string, ModDependency> missing, Mod mod, IReadOnlyDictionary<string, Mod> mods) {
+        foreach (var dependency in mod.Dependencies) {
+            if ((!mods.TryGetValue(dependency.Name, out var foundMod) || dependency.Version > foundMod.Version)
+                && (!missing.TryGetValue(dependency.Name, out var existingDependency) || dependency.Version > existingDependency.Version))
+                missing.Add(dependency.Name, dependency);
         }
-
-        return Result<GitHubAsset>.Failure($"Release {release.Name} does not have a plugin.zip file");
-    }
-
-    private static Result<ModManifest> ValidateManifestProperties(ModManifest manifest) {
-        if (string.IsNullOrWhiteSpace(manifest.Name))
-            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a name");
-        
-        if (string.IsNullOrWhiteSpace(manifest.Version))
-            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a version");
-        
-        if (string.IsNullOrWhiteSpace(manifest.Repository))
-            return Result<ModManifest>.Failure($"Manifest file for mod {manifest.Name} does not have a repository");
-        
-        return Result<ModManifest>.Success(manifest);
-    }
-
-    private static Result<Version> GetReleaseVersion(GitHubRelease release) {
-        if (!TryParseVersion(release.TagName, out var version))
-            return Result<Version>.Failure($"Tag for the latest release of mod {release.Name} is not a valid version string");
-
-        return Result<Version>.Success(version);
-    }
-
-    private static Result<Version> GetModVersion(ModManifest manifest) {
-        if (!TryParseVersion(manifest.Version, out var version))
-            return Result<Version>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
-
-        return Result<Version>.Success(version);
-    }
-
-    private static Result<Version> AssertVersionsEqual(Version version, Version expectedVersion, string modName) {
-        if (version != expectedVersion)
-            return Result<Version>.Failure($"Version in manifest file for mod {modName} does not match the release tag");
-        
-        return Result<Version>.Success(version);
     }
 }

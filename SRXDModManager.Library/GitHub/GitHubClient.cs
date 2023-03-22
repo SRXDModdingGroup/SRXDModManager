@@ -9,7 +9,6 @@ namespace SRXDModManager.Library;
 internal class GitHubClient {
     private HttpClient releasesClient;
     private HttpClient downloadsClient;
-    private JsonSerializer serializer;
 
     public GitHubClient() {
         releasesClient = new HttpClient();
@@ -19,11 +18,9 @@ internal class GitHubClient {
         downloadsClient = new HttpClient();
         downloadsClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/octet-stream"));
         downloadsClient.DefaultRequestHeaders.UserAgent.TryParseAdd("request");
-
-        serializer = new JsonSerializer();
     }
 
-    public async Task<Result<GitHubRelease>> GetLatestRelease(string repository) {
+    public async Task<Result<GitHubRelease>> GetLatestRelease(Repository repository) {
         string url = $"https://api.github.com/repos/{repository}/releases/latest";
         var response = await releasesClient.GetAsync(url);
 
@@ -35,7 +32,7 @@ internal class GitHubClient {
         try {
             using var textReader = new JsonTextReader(new StreamReader(await response.Content.ReadAsStreamAsync()));
             
-            release = serializer.Deserialize<GitHubRelease>(textReader);
+            release = new JsonSerializer().Deserialize<GitHubRelease>(textReader);
         }
         catch (JsonException) {
             return Result<GitHubRelease>.Failure($"Could not deserialize GitHub release at {url}");
@@ -47,7 +44,16 @@ internal class GitHubClient {
         return Result<GitHubRelease>.Success(release);
     }
 
-    public async Task<Result<Stream>> DownloadAsset(GitHubAsset asset) {
+    public async Task<Result<string>> DownloadAssetAsString(GitHubAsset asset) {
+        var response = await downloadsClient.GetAsync(asset.Url);
+        
+        if (!response.IsSuccessStatusCode)
+            return Result<string>.Failure($"GET request to url {asset.Url} failed");
+        
+        return Result<string>.Success(await response.Content.ReadAsStringAsync());
+    }
+
+    public async Task<Result<Stream>> DownloadAssetFromStream(GitHubAsset asset) {
         var response = await downloadsClient.GetAsync(asset.Url);
         
         if (!response.IsSuccessStatusCode)
