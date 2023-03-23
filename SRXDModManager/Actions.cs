@@ -10,32 +10,32 @@ using SRXDModManager.Library;
 namespace SRXDModManager; 
 
 public class Actions {
-    private ModManager modManager;
+    private ModsClient modsClient;
 
-    public Actions(ModManager modManager) {
-        this.modManager = modManager;
+    public Actions(ModsClient modsClient) {
+        this.modsClient = modsClient;
     }
     
     public void SwitchBuild(ActiveBuild build) {
-        if (!modManager.GetActiveBuild().TryGetValue(out var activeBuild, out string failureMessage))
+        if (!ModsUtility.GetActiveBuild().TryGetValue(out var activeBuild, out string failureMessage))
             Console.WriteLine($"Failed to get active build: {failureMessage}");
         else if (activeBuild == build)
             Console.WriteLine($"{build} is already the active build");
-        else if (modManager.SetActiveBuild(build).TryGetValue(out failureMessage))
+        else if (ModsUtility.SetActiveBuild(build).TryGetValue(out failureMessage))
             Console.WriteLine($"Successfully switched builds to {build}");
         else
             Console.WriteLine($"Failed to switch build to {build}: {failureMessage}");
     }
 
     public void CheckForUpdate(string name) {
-        if (!modManager.TryGetMod(name, out var mod))
+        if (!modsClient.TryGetMod(name, out var mod))
             Console.WriteLine($"{name} not found");
-        else if (!modManager.GetLatestModInfo(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
+        else if (!modsClient.GetLatestModInfo(mod).Result.TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
         else {
-            var missingDependencies = modManager.GetMissingDependencies(mod);
+            var missingDependencies = modsClient.GetMissingDependencies(mod);
 
             if (missingDependencies.Count > 0) {
                 Console.WriteLine($"{mod} is missing dependencies:");
@@ -49,7 +49,7 @@ public class Actions {
     }
 
     public void CheckAllForUpdates() {
-        var mods = modManager.GetLoadedMods();
+        var mods = modsClient.GetLoadedMods();
         var tasks = new Task<bool>[mods.Count];
 
         for (int i = 0; i < mods.Count; i++)
@@ -65,21 +65,21 @@ public class Actions {
         if (!repository.Contains("/"))
             repository = "SRXDModdingGroup/" + repository;
 
-        var queue = new DownloadQueue(modManager);
+        var queue = new DownloadQueue(modsClient);
         
         queue.Enqueue(new DownloadRequest(repository, resolveDependencies));
         queue.WaitAll();
     }
 
     public void GetModInfo(string name) {
-        if (!modManager.TryGetMod(name, out var mod))
+        if (!modsClient.TryGetMod(name, out var mod))
             Console.WriteLine($"{name} not found");
         else
             Console.WriteLine($"{mod}: {mod.Description}");
     }
 
     public void GetAllModInfo() {
-        var mods = modManager.GetLoadedMods();
+        var mods = modsClient.GetLoadedMods();
         
         if (mods.Count == 0)
             Console.WriteLine("No mods found");
@@ -112,9 +112,9 @@ public class Actions {
             gameDirectory = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm";
         }
 
-        modManager.ChangeGameDirectory(gameDirectory);
+        modsClient.ChangeGameDirectory(gameDirectory);
 
-        if (!modManager.RefreshLoadedMods().TryGetValue(out var mods, out string failureMessage)) {
+        if (!modsClient.RefreshLoadedMods().TryGetValue(out var mods, out string failureMessage)) {
             Console.WriteLine($"Failed to load mods: {failureMessage}");
             
             return;
@@ -131,7 +131,7 @@ public class Actions {
     }
 
     public void UpdateMod(string name, bool resolveDependencies) {
-        if (!modManager.TryGetMod(name, out var mod)) {
+        if (!modsClient.TryGetMod(name, out var mod)) {
             Console.WriteLine($"{name} not found");
             
             return;
@@ -142,7 +142,7 @@ public class Actions {
         if (requests.Length == 0)
             return;
         
-        var queue = new DownloadQueue(modManager);
+        var queue = new DownloadQueue(modsClient);
 
         foreach (var request in requests)
             queue.Enqueue(request);
@@ -151,7 +151,7 @@ public class Actions {
     }
 
     public void UpdateAllMods(bool resolveDependencies) {
-        var mods = modManager.GetLoadedMods();
+        var mods = modsClient.GetLoadedMods();
         var updateChecks = new Task<DownloadRequest[]>[mods.Count];
 
         for (int i = 0; i < updateChecks.Length; i++)
@@ -167,7 +167,7 @@ public class Actions {
         if (requests.Count == 0)
             return;
         
-        var queue = new DownloadQueue(modManager);
+        var queue = new DownloadQueue(modsClient);
 
         foreach (var request in requests)
             queue.Enqueue(request);
@@ -176,11 +176,11 @@ public class Actions {
     }
     
     private async Task<bool> PerformCheckForUpdate(Mod mod) {
-        if (!(await modManager.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage))
+        if (!(await modsClient.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage))
             Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
         else if (latestVersion > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestVersion}");
-        else if (modManager.GetMissingDependencies(mod).Count > 0)
+        else if (modsClient.GetMissingDependencies(mod).Count > 0)
             Console.WriteLine($"{mod} is missing dependencies");
         else {
             Console.WriteLine($"{mod} is up to date");
@@ -192,7 +192,7 @@ public class Actions {
     }
 
     private async Task<DownloadRequest[]> PerformGetUpdate(Mod mod, bool resolveDependencies) {
-        if (!(await modManager.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage)) {
+        if (!(await modsClient.GetLatestModInfo(mod)).TryGetValue(out var latestVersion, out string failureMessage)) {
             Console.WriteLine($"Failed to check {mod} for update: {failureMessage}");
             
             return Array.Empty<DownloadRequest>();
@@ -207,7 +207,7 @@ public class Actions {
             return Array.Empty<DownloadRequest>();
         }
 
-        var missingDependencies = modManager.GetMissingDependencies(mod);
+        var missingDependencies = modsClient.GetMissingDependencies(mod);
 
         if (missingDependencies.Count == 0)
             return Array.Empty<DownloadRequest>();

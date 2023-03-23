@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace SRXDModManager.Library; 
+﻿namespace SRXDModManager.Library; 
 
 public readonly struct Repository {
     public string Owner { get; }

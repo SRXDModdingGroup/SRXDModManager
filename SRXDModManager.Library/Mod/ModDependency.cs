@@ -7,9 +7,9 @@ public class ModDependency {
     
     public Version Version { get; }
     
-    public string Repository { get; }
+    public Repository Repository { get; }
 
-    internal ModDependency(string name, Version version, string repository) {
+    internal ModDependency(string name, Version version, Repository repository) {
         Name = name;
         Version = version;
         Repository = repository;

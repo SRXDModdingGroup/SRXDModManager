@@ -43,13 +43,15 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="ActiveBuild.cs" />
-        <Compile Include="DownloadRequest.cs" />
+        <Compile Include="GitHub\AssetStream.cs" />
         <Compile Include="GitHub\GitHubAsset.cs" />
         <Compile Include="GitHub\GitHubClient.cs" />
         <Compile Include="GitHub\GitHubRelease.cs" />
         <Compile Include="Manifest\ManifestDependency.cs" />
         <Compile Include="Manifest\ModManifest.cs" />
-        <Compile Include="ModManager.cs" />
+        <Compile Include="ModCollection.cs" />
+        <Compile Include="ModsClient.cs" />
+        <Compile Include="ModsUtility.cs" />
         <Compile Include="Mod\Mod.cs" />
         <Compile Include="Mod\ModDependency.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />

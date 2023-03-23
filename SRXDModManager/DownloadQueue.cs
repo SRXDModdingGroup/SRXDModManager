@@ -7,12 +7,12 @@ using SRXDModManager.Library;
 namespace SRXDModManager; 
 
 public class DownloadQueue {
-    private ModManager modManager;
+    private ModsClient modsClient;
     private HashSet<string> alreadyQueued;
     private ConcurrentQueue<Task<IReadOnlyList<DownloadRequest>>> taskQueue;
     
-    public DownloadQueue(ModManager modManager) {
-        this.modManager = modManager;
+    public DownloadQueue(ModsClient modsClient) {
+        this.modsClient = modsClient;
         alreadyQueued = new HashSet<string>();
         taskQueue = new ConcurrentQueue<Task<IReadOnlyList<DownloadRequest>>>();
     }
@@ -47,7 +47,7 @@ public class DownloadQueue {
     }
     
     private async Task<IReadOnlyList<DownloadRequest>> PerformDownload(string repository, bool resolveDependencies) {
-        if (!(await modManager.DownloadMod(repository)).TryGetValue(out var mod, out string failureMessage)) {
+        if (!(await modsClient.DownloadMod(repository)).TryGetValue(out var mod, out string failureMessage)) {
             Console.WriteLine($"Failed to download mod at {repository}: {failureMessage}");
             
             return Array.Empty<DownloadRequest>();
@@ -58,7 +58,7 @@ public class DownloadQueue {
         if (!resolveDependencies)
             return Array.Empty<DownloadRequest>();
             
-        var dependencies = modManager.GetMissingDependencies(mod);
+        var dependencies = modsClient.GetMissingDependencies(mod);
         var requests = new DownloadRequest[dependencies.Count];
 
         for (int i = 0; i < dependencies.Count; i++)

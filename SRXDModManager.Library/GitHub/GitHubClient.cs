@@ -53,12 +53,12 @@ internal class GitHubClient {
         return Result<string>.Success(await response.Content.ReadAsStringAsync());
     }
 
-    public async Task<Result<Stream>> DownloadAssetFromStream(GitHubAsset asset) {
+    public async Task<Result<AssetStream>> DownloadAssetFromStream(GitHubAsset asset) {
         var response = await downloadsClient.GetAsync(asset.Url);
         
         if (!response.IsSuccessStatusCode)
-            return Result<Stream>.Failure($"GET request to url {asset.Url} failed");
+            return Result<AssetStream>.Failure($"GET request to url {asset.Url} failed");
 
-        return Result<Stream>.Success(await response.Content.ReadAsStreamAsync());
+        return Result<AssetStream>.Success(new AssetStream(asset.Name, await response.Content.ReadAsStreamAsync()));
     }
 }
