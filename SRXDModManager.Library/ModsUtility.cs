@@ -4,24 +4,38 @@ using System.IO;
 namespace SRXDModManager.Library; 
 
 public static class ModsUtility {
-    public static IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod, ModCollection loadedMods) => GetMissingDependencies(new[] { mod }, loadedMods);
+    public static bool TryGetModFromDirectory(string directory, out Mod mod) {
+        string path = Path.Combine(directory.Trim(), "manifest.json");
+        
+        if (!File.Exists(path)) {
+            mod = null;
+            
+            return false;
+        }
 
-    public static IReadOnlyList<ModDependency> GetMissingDependencies(IEnumerable<Mod> mods, ModCollection loadedMods) {
+        return Util.DeserializeModManifest(File.ReadAllText(path))
+            .Then(Util.CreateModFromManifest)
+            .TryGetValue(out mod, out _);
+    }
+
+    public static IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod, ModCollection mods) => GetMissingDependencies(new[] { mod }, mods);
+
+    public static IReadOnlyList<ModDependency> GetMissingDependencies(IEnumerable<Mod> modsToCheck, ModCollection mods) {
         var missing = new Dictionary<string, ModDependency>();
         
-        foreach (var mod in mods)
-            AddMissingDependencies(missing, mod, loadedMods);
+        foreach (var mod in modsToCheck)
+            AddMissingDependencies(missing, mod, mods);
         
         return new List<ModDependency>(missing.Values);
     }
 
-    public static Result<SetActiveBuildResult> SetActiveBuild(ActiveBuild build, string gameDirectory) {
+    public static Result<bool> TrySetActiveBuild(ActiveBuild build, string gameDirectory) {
         if (!GetActiveBuild(gameDirectory)
                 .TryGetValue(out var activeBuild, out string failureMessage))
-            return Result<SetActiveBuildResult>.Failure(failureMessage);
+            return Result<bool>.Failure(failureMessage);
 
         if (build == activeBuild)
-            return Result<SetActiveBuildResult>.Success(SetActiveBuildResult.AlreadyActiveBuild);
+            return Result<bool>.Success(false);
 
         string activePlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll");
         string tempPlayerPath = Path.Combine(gameDirectory, "UnityPlayer.dll.tmp");
@@ -43,14 +57,14 @@ public static class ModsUtility {
             }
         }
         catch (IOException e) {
-            return Result<SetActiveBuildResult>.Failure(e.Message);
+            return Result<bool>.Failure(e.Message);
         }
         finally {
             if (File.Exists(tempPlayerPath))
                 File.Delete(tempPlayerPath);
         }
         
-        return Result<SetActiveBuildResult>.Success(SetActiveBuildResult.Success);
+        return Result<bool>.Success(true);
     }
 
     public static Result<ActiveBuild> GetActiveBuild(string gameDirectory) {

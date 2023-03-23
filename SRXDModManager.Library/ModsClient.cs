@@ -1,13 +1,10 @@
-﻿using System.Collections.Concurrent;
-using System.IO;
-using System.Threading;
+﻿using System.IO;
 using System.Threading.Tasks;
 
 namespace SRXDModManager.Library; 
 
 public class ModsClient {
     private GitHubClient gitHubClient = new();
-    private int tempCounter;
 
     public Task<Result<Mod>> DownloadMod(Repository repository, string directory)
         => Util.VerifyDirectoryExists(directory)
@@ -23,8 +20,8 @@ public class ModsClient {
             .Then(Util.DeserializeModManifest)
             .Then(Util.CreateModFromManifest);
     
-    private async Task<Result<Mod>> PerformDownload(AssetStream stream, string directory) {
-        string tempDirectory = Path.Combine(directory, $"{stream.Name}_{Interlocked.Increment(ref tempCounter)}.tmp");
+    private static async Task<Result<Mod>> PerformDownload(AssetStream stream, string directory) {
+        string tempDirectory = Path.Combine(directory, Util.GetUniqueFilePath(directory, stream.Name, ".tmp"));
 
         if (Directory.Exists(tempDirectory))
             Directory.Delete(tempDirectory, true);
