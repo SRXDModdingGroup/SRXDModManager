@@ -31,7 +31,7 @@ public class CommandLine {
             command.AddCommand(CreateCommand("all", "Checks all loaded mods for updates or missing dependencies",
                 command => command.SetHandler(modManager.CheckAllForUpdates)));
             command.AddArgument(nameArg);
-            command.SetHandler(modManager.CheckForUpdate, nameArg);
+            command.SetHandler(name => modManager.CheckForUpdate(name).Wait(), nameArg);
         }));
 
         root.AddCommand(CreateCommand("download", "Downloads a mod from a Git release", command => {
@@ -43,7 +43,7 @@ public class CommandLine {
             
             command.AddArgument(repositoryArg);
             command.AddOption(dependenciesOption);
-            command.SetHandler(modManager.Download, repositoryArg, dependenciesOption);
+            command.SetHandler((repository, resolveDependencies) => modManager.Download(repository, resolveDependencies).Wait(), repositoryArg, dependenciesOption);
         }));
         
         root.AddCommand(CreateCommand("exit", "Exits the application"));
@@ -51,12 +51,14 @@ public class CommandLine {
         root.AddCommand(CreateCommand("info", "Gets detailed information about a mod", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
             
-            command.AddCommand(CreateCommand("all", "Gets info for all loaded mods", command => command.SetHandler(modManager.GetAllModInfo)));
+            command.AddCommand(CreateCommand("all", "Gets info for all loaded mods",
+                command => command.SetHandler(modManager.GetAllModInfo)));
             command.AddArgument(nameArg);
             command.SetHandler(modManager.GetModInfo, nameArg);
         }));
         
-        root.AddCommand(CreateCommand("refresh", "Refreshes the list of downloaded mods", command => { command.SetHandler(modManager.RefreshMods); }));
+        root.AddCommand(CreateCommand("refresh", "Refreshes the list of downloaded mods",
+            command => { command.SetHandler(modManager.RefreshMods); }));
         
         root.AddCommand(CreateCommand("update", "Updates a mod if there is a new version available", command => {
             var nameArg = new Argument<string>("name", "The name of the mod");
@@ -64,12 +66,12 @@ public class CommandLine {
             
             command.AddCommand(CreateCommand("all", "Updates all loaded mods", command => {
                 command.AddOption(dependenciesOption);
-                command.SetHandler(modManager.UpdateAll, dependenciesOption);
+                command.SetHandler(resolveDependencies => modManager.UpdateAll(resolveDependencies).Wait(), dependenciesOption);
             }));
             
             command.AddArgument(nameArg);
             command.AddOption(dependenciesOption);
-            command.SetHandler(modManager.Update, nameArg, dependenciesOption);
+            command.SetHandler((name, resolveDependencies) => modManager.Update(name, resolveDependencies).Wait(), nameArg, dependenciesOption);
         }));
     }
     
