@@ -29,8 +29,8 @@ public class ModManager {
             loadedMods.Clear();
 
             if (!VerifyDirectoryExists(gameDirectory)
-                    .Then(_ => VerifyDirectoryExists(pluginsDirectory))
-                    .TryGetValue(out _, out string failureMessage)) {
+                    .Then(() => VerifyDirectoryExists(pluginsDirectory))
+                    .TryGetValue(out string failureMessage)) {
                 Console.WriteLine($"Failed to refresh mods: {failureMessage}");
 
                 return;
@@ -105,7 +105,7 @@ public class ModManager {
         }
     }
 
-    public async Task CheckForUpdates(string name) {
+    public async Task CheckForUpdate(string name) {
         Mod mod;
         
         lock (loadedMods) {
@@ -217,22 +217,18 @@ public class ModManager {
         
     }
     
-    private static Result<string> VerifyDirectoryExists(string directory) {
-        directory = directory.Trim();
-        
+    private static Result VerifyDirectoryExists(string directory) {
         if (!Directory.Exists(directory))
-            return Result<string>.Failure($"Could not find directory {directory}");
+            return Result.Failure($"Could not find directory {directory}");
         
-        return Result<string>.Success(directory);
+        return Result.Success();
     }
 
-    private static Result<string> VerifyFileExists(string path) {
-        path = path.Trim();
-        
+    private static Result VerifyFileExists(string path) {
         if (!File.Exists(path))
-            return Result<string>.Failure($"Could not find file {path}");
+            return Result.Failure($"Could not find file {path}");
         
-        return Result<string>.Success(path);
+        return Result.Success();
     }
 
     private async Task PerformDownload(Repository repository) {

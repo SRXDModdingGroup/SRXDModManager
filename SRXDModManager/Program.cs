@@ -1,17 +1,41 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Reflection;
 using System.Text;
+using Newtonsoft.Json;
 using SRXDModManager.Library;
 
 namespace SRXDModManager;
 
 internal class Program {
     public static void Main() {
-        var modManager = new ModsClient();
-        var actions = new Actions(modManager);
-        var commandLine = new CommandLine(actions);
-        
-        actions.RefreshMods();
+        string configPath = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "config.json");
+        string gameDirectory = null;
+
+        if (File.Exists(configPath)) {
+            try {
+                var config = JsonConvert.DeserializeObject<Config>(File.ReadAllText(configPath));
+
+                gameDirectory = config.GameDirectory;
+                Console.WriteLine($"Using game directory {gameDirectory}");
+            }
+            catch (JsonException) {
+                Console.WriteLine("Failed to deserialize config.json");
+            }
+        }
+        else
+            Console.WriteLine("config.json not found");
+
+        if (gameDirectory == null) {
+            Console.WriteLine("Defaulting game directory to C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm");
+            gameDirectory = "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Spin Rhythm";
+        }
+
+        var modManager = new ModManager(gameDirectory, "SRXDModdingGroup");
+        var commandLine = new CommandLine(modManager);
+
+        modManager.RefreshMods();
 
         while (true) {
             Console.Write("> SRXDModManager ");
