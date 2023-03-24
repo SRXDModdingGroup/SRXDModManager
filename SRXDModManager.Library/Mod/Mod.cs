@@ -9,15 +9,15 @@ public class Mod {
     
     public Version Version { get; }
     
-    public Repository Repository { get; }
+    public Address Address { get; }
 
     public ModDependency[] Dependencies { get; }
 
-    internal Mod(string name, string description, Version version, Repository repository, ModDependency[] dependencies) {
+    internal Mod(string name, string description, Version version, Address address, ModDependency[] dependencies) {
         Name = name;
         Description = description;
         Version = version;
-        Repository = repository;
+        Address = address;
         Dependencies = dependencies;
     }
 

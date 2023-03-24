@@ -20,8 +20,8 @@ internal class GitHubClient {
         downloadsClient.DefaultRequestHeaders.UserAgent.TryParseAdd("request");
     }
 
-    public async Task<Result<GitHubRelease>> GetLatestRelease(Repository repository) {
-        string url = $"https://api.github.com/repos/{repository}/releases/latest";
+    public async Task<Result<GitHubRelease>> GetLatestRelease(Address address) {
+        string url = $"https://api.github.com/repos/{address}/releases/latest";
         var response = await releasesClient.GetAsync(url);
 
         if (!response.IsSuccessStatusCode)

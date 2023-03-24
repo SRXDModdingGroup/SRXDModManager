@@ -7,12 +7,14 @@ public class ModDependency {
     
     public Version Version { get; }
     
-    public Repository Repository { get; }
+    public Address Address { get; }
 
-    internal ModDependency(string name, Version version, Repository repository) {
+    public ModDependency(Mod mod) : this(mod.Name, mod.Version, mod.Address) { }
+
+    internal ModDependency(string name, Version version, Address address) {
         Name = name;
         Version = version;
-        Repository = repository;
+        Address = address;
     }
 
     public override string ToString() => $"{Name} {Version}";

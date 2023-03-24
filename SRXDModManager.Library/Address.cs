@@ -1,20 +1,28 @@
 ﻿namespace SRXDModManager.Library; 
 
-public readonly struct Repository {
+public readonly struct Address {
     public string Owner { get; }
     
     public string Name { get; }
 
-    public Repository(string owner, string name) {
+    public Address(string owner, string name) {
         Owner = owner;
         Name = name;
     }
 
     public override string ToString() => $"{Owner}/{Name}";
 
-    public static bool TryParse(string str, out Repository repository) {
+    public override bool Equals(object obj) => obj is Address other && this == other;
+
+    public override int GetHashCode() => ToString().GetHashCode();
+
+    public static bool operator ==(Address a, Address b) => a.Owner == b.Owner && a.Name == b.Name;
+    
+    public static bool operator !=(Address a, Address b) => a.Owner != b.Owner || a.Name != b.Name;
+
+    public static bool TryParse(string str, out Address address) {
         if (string.IsNullOrWhiteSpace(str)) {
-            repository = default;
+            address = default;
 
             return false;
         }
@@ -37,7 +45,7 @@ public readonly struct Repository {
                 continue;
 
             if (firstSlash >= 0) {
-                repository = default;
+                address = default;
 
                 return false;
             }
@@ -46,12 +54,12 @@ public readonly struct Repository {
         }
 
         if (firstSlash < 0 || lastNonWhitespace <= firstSlash || firstNonWhitespace >= firstSlash) {
-            repository = default;
+            address = default;
 
             return false;
         }
 
-        repository = new Repository(
+        address = new Address(
             str.Substring(firstNonWhitespace, firstSlash - firstNonWhitespace),
             str.Substring(firstSlash + 1, lastNonWhitespace - firstSlash));
 

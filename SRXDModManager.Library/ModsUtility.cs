@@ -4,18 +4,22 @@ using System.IO;
 namespace SRXDModManager.Library; 
 
 public static class ModsUtility {
-    public static bool TryGetModFromDirectory(string directory, out Mod mod) {
-        string path = Path.Combine(directory.Trim(), "manifest.json");
-        
-        if (!File.Exists(path)) {
-            mod = null;
-            
-            return false;
-        }
+    public static Result<(bool exists, Mod mod)> TryGetModFromDirectory(string directory, string name) {
+        if (!Util.VerifyDirectoryExists(directory)
+                .TryGetValue(out directory, out string failureMessage))
+            return Result<(bool, Mod)>.Failure(failureMessage);
 
-        return Util.DeserializeModManifest(File.ReadAllText(path))
-            .Then(Util.CreateModFromManifest)
-            .TryGetValue(out mod, out _);
+        string path = Path.Combine(directory, name.Trim(), "manifest.json");
+        
+        if (!File.Exists(path))
+            return Result<(bool, Mod)>.Success((false, null));
+
+        if (!Util.DeserializeModManifest(File.ReadAllText(path))
+                .Then(Util.CreateModFromManifest)
+                .TryGetValue(out var mod, out  failureMessage))
+            return Result<(bool, Mod)>.Failure(failureMessage);
+        
+        return Result<(bool, Mod)>.Success((true, mod));
     }
 
     public static IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod, ModCollection mods) => GetMissingDependencies(new[] { mod }, mods);
@@ -85,8 +89,27 @@ public static class ModsUtility {
         return Result<ActiveBuild>.Failure("Active build cannot be determined");
     }
 
+    public static Result<IReadOnlyList<Mod>> GetAllModsInDirectory(string directory) {
+        if (!Util.VerifyDirectoryExists(directory)
+                .TryGetValue(out directory, out string failureMessage))
+            return Result<IReadOnlyList<Mod>>.Failure(failureMessage);
+
+        var mods = new List<Mod>();
+
+        foreach (string subDirectory in Directory.GetDirectories(directory)) {
+            string path = Path.Combine(subDirectory, "manifest.json");
+
+            if (File.Exists(path) && Util.DeserializeModManifest(File.ReadAllText(path))
+                    .Then(Util.CreateModFromManifest)
+                    .TryGetValue(out var mod, out _))
+                mods.Add(mod);
+        }
+
+        return Result<IReadOnlyList<Mod>>.Success(mods);
+    }
+
     private static bool IsDependencyMissing(ModDependency dependency, ModCollection mods, Dictionary<string, ModDependency> missing) =>
-        (!mods.TryGetMod(dependency.Name, out var foundMod) || dependency.Version > foundMod.Version)
+        (!mods.ContainsMod(dependency.Name, dependency.Version))
         && (!missing.TryGetValue(dependency.Name, out var existingDependency) || dependency.Version > existingDependency.Version);
 
     private static void AddMissingDependencies(Dictionary<string, ModDependency> missing, Mod mod, ModCollection mods) {

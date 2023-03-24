@@ -44,7 +44,7 @@ internal static class Util {
         if (!Version.TryParse(manifest.Version, out var version))
             return Result<Mod>.Failure($"Manifest file for mod {manifest.Name} does not have a valid version");
         
-        if (!Repository.TryParse(manifest.Repository, out var repository))
+        if (!Address.TryParse(manifest.Repository, out var address))
             return Result<Mod>.Failure($"Manifest file for mod {manifest.Name} does not have a valid repository");
         
         var manifestDependencies = manifest.Dependencies;
@@ -58,7 +58,7 @@ internal static class Util {
             dependencies.Add(dependency);
         }
 
-        return Result<Mod>.Success(new Mod(manifest.Name, manifest.Description, version, repository, dependencies.ToArray()));
+        return Result<Mod>.Success(new Mod(manifest.Name, manifest.Description, version, address, dependencies.ToArray()));
     }
 
     public static Result<ModDependency> CreateModDependencyFromManifestDependency(ManifestDependency manifestDependency, string modName) {
@@ -68,7 +68,7 @@ internal static class Util {
         if (!Version.TryParse(manifestDependency.Version, out var version))
             return Result<ModDependency>.Failure($"Dependency for mod {modName} does not have a valid version");
         
-        if (!Repository.TryParse(manifestDependency.Repository, out var repository))
+        if (!Address.TryParse(manifestDependency.Repository, out var repository))
             return Result<ModDependency>.Failure($"Dependency for mod {modName} does not have a valid repository");
         
         return Result<ModDependency>.Success(new ModDependency(manifestDependency.Name, version, repository));

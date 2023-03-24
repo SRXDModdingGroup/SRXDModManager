@@ -6,15 +6,15 @@ namespace SRXDModManager.Library;
 public class ModsClient {
     private GitHubClient gitHubClient = new();
 
-    public Task<Result<Mod>> DownloadMod(Repository repository, string directory)
+    public Task<Result<Mod>> DownloadMod(Address address, string directory)
         => Util.VerifyDirectoryExists(directory)
-            .Then(_ => gitHubClient.GetLatestRelease(repository))
+            .Then(_ => gitHubClient.GetLatestRelease(address))
             .Then(Util.GetZipAsset)
             .Then(gitHubClient.DownloadAssetFromStream)
             .Then(stream => PerformDownload(stream, directory));
 
-    public Task<Result<Mod>> GetLatestModInfo(Repository repository)
-        => gitHubClient.GetLatestRelease(repository)
+    public Task<Result<Mod>> GetLatestModInfo(Address address)
+        => gitHubClient.GetLatestRelease(address)
             .Then(Util.GetManifestAsset)
             .Then(gitHubClient.DownloadAssetAsString)
             .Then(Util.DeserializeModManifest)
