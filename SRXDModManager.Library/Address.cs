@@ -12,14 +12,6 @@ public readonly struct Address {
 
     public override string ToString() => $"{Owner}/{Name}";
 
-    public override bool Equals(object obj) => obj is Address other && this == other;
-
-    public override int GetHashCode() => ToString().GetHashCode();
-
-    public static bool operator ==(Address a, Address b) => a.Owner == b.Owner && a.Name == b.Name;
-    
-    public static bool operator !=(Address a, Address b) => a.Owner != b.Owner || a.Name != b.Name;
-
     public static bool TryParse(string str, out Address address) {
         if (string.IsNullOrWhiteSpace(str)) {
             address = default;

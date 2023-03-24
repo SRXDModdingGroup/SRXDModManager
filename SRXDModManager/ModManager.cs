@@ -1,10 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Reflection;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 using SRXDModManager.Library;
 
 namespace SRXDModManager; 
@@ -13,14 +10,14 @@ public class ModManager {
     private const int MAX_GET_DEPENDENCIES_ITERATIONS = 8;
     
     private string gameDirectory;
-    private string defaultRepository;
+    private string defaultOwner;
     private string pluginsDirectory;
     private ModsClient client;
     private ModCollection loadedMods;
     
-    public ModManager(string gameDirectory, string defaultRepository) {
+    public ModManager(string gameDirectory, string defaultOwner) {
         this.gameDirectory = gameDirectory.Trim();
-        this.defaultRepository = defaultRepository;
+        this.defaultOwner = defaultOwner;
         pluginsDirectory = Path.Combine(this.gameDirectory, "BepInEx", "plugins");
         loadedMods = new ModCollection();
         client = new ModsClient();
@@ -86,20 +83,33 @@ public class ModManager {
         }
     }
 
-    public async Task Download(string repositoryName, bool resolveDependencies) {
-        if (!Address.TryParse(repositoryName, out var repository)) {
-            string withDefault = $"{defaultRepository}/{repositoryName}";
+    public async Task Download(string address, bool resolveDependencies) {
+        if (!Address.TryParse(address, out var addressObj)
+            && !Address.TryParse($"{defaultOwner}/{address}", out addressObj)) {
+            Console.WriteLine($"{address} is not a valid repository");
             
-            if (!Address.TryParse(withDefault, out repository)) {
-                Console.WriteLine($"{repositoryName} is not a valid repository name");
-                
-                return;
-            }
+            return;
         }
-
+        
         if (!resolveDependencies) {
-            await PerformDownload(repository);
+            await PerformDownload(addressObj);
+            
+            return;
         }
+        
+        if (!(await client.GetLatestModInfo(addressObj))
+            .TryGetValue(out var mod, out string failureMessage)) {
+            Console.WriteLine($"Failed to download mod at {addressObj}: {failureMessage}");
+
+            return;
+        }
+        
+        ModCollection loadedModsCopy;
+        
+        lock (loadedMods)
+            loadedModsCopy = new ModCollection(loadedMods);
+        
+        await DownloadWithDependencies(new[] { mod }, loadedModsCopy);
     }
 
     public async Task CheckForUpdate(string modName) {
@@ -119,7 +129,7 @@ public class ModManager {
         else if (latestMod.Version > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestMod.Version}");
         else {
-            IReadOnlyList<ModDependency> missingDependencies;
+            DependencyCollection missingDependencies;
 
             lock (loadedMods)
                 missingDependencies = ModsUtility.GetMissingDependencies(mod, loadedMods);
@@ -146,118 +156,87 @@ public class ModManager {
         for (int i = 0; i < mods.Count; i++)
             tasks[i] = PerformCheckForUpdate(mods[i]);
 
-        bool all = true;
+        bool any = false;
 
         foreach (var task in tasks)
-            all &= await task;
+            any |= await task;
 
-        if (all)
+        if (!any)
             Console.WriteLine("All mods are up to date");
     }
 
     public async Task Update(string modName, bool resolveDependencies) {
-        Mod mod;
+        ModCollection loadedModsCopy;
         
-        lock (loadedMods) {
-            if (!loadedMods.TryGetMod(modName, out mod)) {
-                Console.WriteLine($"{modName} not found");
+        lock (loadedMods)
+            loadedModsCopy = new ModCollection(loadedMods);
 
-                return;
-            }
-        }
-
-        if (!resolveDependencies) {
-            await Download(new[] { mod });
+        if (!loadedModsCopy.TryGetMod(modName, out var mod)) {
+            Console.WriteLine($"{modName} not found");
 
             return;
-        }
-        else {
-            await Update(new[] { mod });
         }
         
         if (!(await client.GetLatestModInfo(mod.Address))
             .TryGetValue(out var latestMod, out string failureMessage)) {
-            Console.WriteLine($"Failed to check {mod.Name} for update: {failureMessage}");
+            Console.WriteLine($"Failed to get latest version of {mod.Name}: {failureMessage}");
 
             return;
         }
 
-        bool upToDate = mod.Version >= latestMod.Version;
-
-        if (!resolveDependencies) {
-            if (upToDate)
+        if (resolveDependencies) {
+            if (!await DownloadWithDependencies(new[] { latestMod }, loadedModsCopy))
                 Console.WriteLine($"{mod} is up to date");
-            else
-                await PerformDownload(mod.Address);
-
-            return;
         }
-
-        var modsToDownload = new ModCollection();
-        var modsToCheck = new Queue<Mod>();
-
-        ModCollection resultingMods;
-
-        lock (loadedMods)
-            resultingMods = new ModCollection(loadedMods);
-
-        if (upToDate)
-            modsToCheck.Enqueue(mod);
-        else {
-            modsToCheck.Enqueue(latestMod);
-            modsToDownload.TryAddMod(latestMod);
-        }
+        else if (mod.Version >= latestMod.Version)
+            Console.WriteLine($"{mod} is up to date");
+        else
+            await PerformDownload(mod.Address);
     }
 
     public async Task UpdateAll(bool resolveDependencies) {
-        List<Mod> mods;
-        
+        ModCollection loadedModsCopy;
+
         lock (loadedMods)
-            mods = new List<Mod>(loadedMods);
+            loadedModsCopy = new ModCollection(loadedMods);
 
-        var modsToUpdate = new List<Mod>();
-        var tasks = new Task<bool>[mods.Count];
-        
-        for (int i = 0; i < mods.Count; i++)
-            tasks[i] = PerformGetUpdate(mods[i]);
+        var loadedModsList = new List<Mod>(loadedModsCopy);
+        var latestMods = new ModCollection(loadedModsCopy);
+        var getLatestTasks = new Task<Result<Mod>>[loadedModsCopy.Count];
 
-        for (int i = 0; i < tasks.Length; i++) {
-            if (await tasks[i])
-                continue;
+        for (int i = 0; i < loadedModsCopy.Count; i++)
+            getLatestTasks[i] = client.GetLatestModInfo(loadedModsList[i].Address);
 
-            modsToUpdate.Add(mods[i]);
+        for (int i = 0; i < getLatestTasks.Length; i++) {
+            if ((await getLatestTasks[i]).TryGetValue(out var mod, out string failureMessage))
+                latestMods.TryAddMod(mod);
+            else
+                Console.WriteLine($"Failed to get latest version of {loadedModsList[i].Name}: {failureMessage}");
         }
 
-        if (!resolveDependencies) {
-            if (modsToUpdate.Count == 0)
+        if (resolveDependencies) {
+            if (!await DownloadWithDependencies(latestMods, loadedModsCopy))
                 Console.WriteLine("All mods are up to date");
-            else {
-                foreach (var mod in modsToUpdate)
-                    await PerformDownload(mod.Address);
-            }
-            
+
             return;
         }
-        
-        
-    }
-    
-    private static Result VerifyDirectoryExists(string directory) {
-        if (!Directory.Exists(directory))
-            return Result.Failure($"Could not find directory {directory}");
-        
-        return Result.Success();
-    }
 
-    private static Result VerifyFileExists(string path) {
-        if (!File.Exists(path))
-            return Result.Failure($"Could not find file {path}");
-        
-        return Result.Success();
+        bool any = false;
+            
+        foreach (var mod in latestMods) {
+            if (loadedModsCopy.ContainsMod(mod.Name, mod.Version))
+                continue;
+                
+            any = true;
+            await PerformDownload(mod.Address);
+        }
+            
+        if (!any)
+            Console.WriteLine("All mods are up to date");
     }
 
     private async Task PerformDownload(Address address) {
-        if (!(await client.DownloadMod(address, gameDirectory))
+        if (!(await client.DownloadMod(address, pluginsDirectory))
             .TryGetValue(out var mod, out string failureMessage)) {
             Console.WriteLine($"Failed to download mod at {address}: {failureMessage}");
             
@@ -270,53 +249,6 @@ public class ModManager {
         Console.WriteLine($"Successfully downloaded {mod}");
     }
 
-    private async Task Update(IReadOnlyList<Mod> mods, bool force, bool resolveDependencies) {
-        var tasks = new Task<Result<Mod>>[mods.Count];
-        
-        for (int i = 0; i < mods.Count; i++)
-            tasks[i] = client.GetLatestModInfo(mods[i].Address);
-
-        var latestMods = new Mod[mods.Count];
-
-        for (int i = 0; i < tasks.Length; i++) {
-            if ((await tasks[i]).TryGetValue(out var latestMod, out string failureMessage))
-                latestMods[i] = latestMod;
-            else {
-                latestMods[i] = mods[i];
-                Console.WriteLine($"Failed to get latest version of {mods[i].Name}: {failureMessage}");
-            }
-        }
-        
-        var modsToDownload = new ModCollection();
-        var modsToCheck = new Queue<Mod>();
-
-        ModCollection resultingMods;
-
-        lock (loadedMods)
-            resultingMods = new ModCollection(loadedMods);
-        
-        foreach (var mod in mods) {
-            if (!(await client.GetLatestModInfo(mod.Address))
-                .TryGetValue(out var latestMod, out string failureMessage)) {
-                Console.WriteLine($"Failed to get latest version of {mod.Name}: {failureMessage}");
-
-                return;
-            }
-
-            if (mod.Version < latestMod.Version) {
-                modsToDownload.TryAddMod(latestMod);
-                resultingMods.TryAddMod(latestMod);
-                modsToCheck.Enqueue(latestMod);
-            }
-            else {
-                Console.WriteLine($"{mod} is up to date");
-                modsToCheck.Enqueue(mod);
-            }
-        }
-        
-        
-    }
-    
     private async Task<bool> PerformCheckForUpdate(Mod mod) {
         if (!(await client.GetLatestModInfo(mod.Address))
             .TryGetValue(out var latestMod, out string failureMessage))
@@ -324,7 +256,7 @@ public class ModManager {
         else if (latestMod.Version > mod.Version)
             Console.WriteLine($"{mod} is not up to date. Latest version is {latestMod.Version}");
         else {
-            IReadOnlyList<ModDependency> missingDependencies;
+            DependencyCollection missingDependencies;
 
             lock (loadedMods)
                 missingDependencies = ModsUtility.GetMissingDependencies(mod, loadedMods);
@@ -334,21 +266,26 @@ public class ModManager {
             else {
                 Console.WriteLine($"{mod} is up to date");
 
-                return true;
+                return false;
             }
         }
 
-        return false;
+        return true;
     }
-    
-    private async Task<bool> PerformGetUpdate(Mod mod) {
-        if ((await client.GetLatestModInfo(mod.Address))
-            .TryGetValue(out var latestMod, out string failureMessage))
-            return mod.Version >= latestMod.Version;
-        
-        Console.WriteLine($"Failed to get latest version of {mod.Name}: {failureMessage}");
 
-        return false;
+    private async Task<bool> DownloadWithDependencies(IEnumerable<Mod> mods, ModCollection modCollection) {
+        var dependencies = await GetDependenciesRecursively(mods);
+        bool any = false;
+
+        foreach (var dependency in dependencies) {
+            if (modCollection.ContainsMod(dependency.Name, dependency.Version))
+                continue;
+            
+            any = true;
+            await PerformDownload(dependency.Address);
+        }
+
+        return any;
     }
 
     private async Task<DependencyCollection> GetDependenciesRecursively(IEnumerable<Mod> mods) {
@@ -360,7 +297,7 @@ public class ModManager {
         var modsToCheck = new ModCollection(mods);
         var checkedMods = new ModCollection();
         var dependenciesToCheck = new DependencyCollection();
-        var getLatestTasks = new Dictionary<Address, (ModDependency, Task<Result<Mod>>)>();
+        var getLatestTasks = new Dictionary<string, (ModDependency, Task<Result<Mod>>)>();
 
         for (int i = 0; i < MAX_GET_DEPENDENCIES_ITERATIONS && modsToCheck.Count > 0; i++) {
             foreach (var mod in modsToCheck) {
@@ -369,6 +306,8 @@ public class ModManager {
                 foreach (var dependency in mod.Dependencies)
                     dependenciesToCheck.TryAddDependency(dependency);
             }
+            
+            modsToCheck.Clear();
 
             foreach (var dependency in dependenciesToCheck) {
                 if (checkedMods.ContainsMod(dependency.Name, dependency.Version))
@@ -376,8 +315,8 @@ public class ModManager {
                 
                 if (loadedModsCopy.TryGetMod(dependency.Name, dependency.Version, out var dependentMod))
                     modsToCheck.TryAddMod(dependentMod);
-                else if (!getLatestTasks.ContainsKey(dependency.Address))
-                    getLatestTasks.Add(dependency.Address, (dependency, client.GetLatestModInfo(dependency.Address)));
+                else if (!getLatestTasks.ContainsKey(dependency.Address.ToString()))
+                    getLatestTasks.Add(dependency.Address.ToString(), (dependency, client.GetLatestModInfo(dependency.Address)));
             }
             
             dependenciesToCheck.Clear();

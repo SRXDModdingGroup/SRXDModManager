@@ -4,33 +4,39 @@ using System.IO;
 namespace SRXDModManager.Library; 
 
 public static class ModsUtility {
-    public static Result<(bool exists, Mod mod)> TryGetModFromDirectory(string directory, string name) {
-        if (!Util.VerifyDirectoryExists(directory)
-                .TryGetValue(out directory, out string failureMessage))
-            return Result<(bool, Mod)>.Failure(failureMessage);
+    public static DependencyCollection GetDependencies(IEnumerable<Mod> mods) {
+        var dependencies = new DependencyCollection();
 
-        string path = Path.Combine(directory, name.Trim(), "manifest.json");
-        
-        if (!File.Exists(path))
-            return Result<(bool, Mod)>.Success((false, null));
+        foreach (var mod in mods) {
+            foreach (var dependency in mod.Dependencies)
+                dependencies.TryAddDependency(dependency);
+        }
 
-        if (!Util.DeserializeModManifest(File.ReadAllText(path))
-                .Then(Util.CreateModFromManifest)
-                .TryGetValue(out var mod, out  failureMessage))
-            return Result<(bool, Mod)>.Failure(failureMessage);
-        
-        return Result<(bool, Mod)>.Success((true, mod));
+        return dependencies;
+    }
+    
+    public static DependencyCollection GetMissingDependencies(Mod mod, ModCollection modCollection) {
+        var missingDependencies = new DependencyCollection();
+
+        foreach (var dependency in mod.Dependencies) {
+            if (!modCollection.ContainsMod(dependency.Name, dependency.Version))
+                missingDependencies.TryAddDependency(dependency);
+        }
+
+        return missingDependencies;
     }
 
-    public static IReadOnlyList<ModDependency> GetMissingDependencies(Mod mod, ModCollection mods) => GetMissingDependencies(new[] { mod }, mods);
+    public static DependencyCollection GetMissingDependencies(IEnumerable<Mod> mods, ModCollection modCollection) {
+        var missingDependencies = new DependencyCollection();
 
-    public static IReadOnlyList<ModDependency> GetMissingDependencies(IEnumerable<Mod> modsToCheck, ModCollection mods) {
-        var missing = new Dictionary<string, ModDependency>();
-        
-        foreach (var mod in modsToCheck)
-            AddMissingDependencies(missing, mod, mods);
-        
-        return new List<ModDependency>(missing.Values);
+        foreach (var mod in mods) {
+            foreach (var dependency in mod.Dependencies) {
+                if (!modCollection.ContainsMod(dependency.Name, dependency.Version))
+                    missingDependencies.TryAddDependency(dependency);
+            }
+        }
+
+        return missingDependencies;
     }
 
     public static Result<bool> TrySetActiveBuild(ActiveBuild build, string gameDirectory) {
@@ -89,6 +95,24 @@ public static class ModsUtility {
         return Result<ActiveBuild>.Failure("Active build cannot be determined");
     }
 
+    public static Result<(bool exists, Mod mod)> TryGetModFromDirectory(string directory, string name) {
+        if (!Util.VerifyDirectoryExists(directory)
+                .TryGetValue(out directory, out string failureMessage))
+            return Result<(bool, Mod)>.Failure(failureMessage);
+
+        string path = Path.Combine(directory, name.Trim(), "manifest.json");
+        
+        if (!File.Exists(path))
+            return Result<(bool, Mod)>.Success((false, null));
+
+        if (!Util.DeserializeModManifest(File.ReadAllText(path))
+                .Then(Util.CreateModFromManifest)
+                .TryGetValue(out var mod, out  failureMessage))
+            return Result<(bool, Mod)>.Failure(failureMessage);
+        
+        return Result<(bool, Mod)>.Success((true, mod));
+    }
+
     public static Result<IReadOnlyList<Mod>> GetAllModsInDirectory(string directory) {
         if (!Util.VerifyDirectoryExists(directory)
                 .TryGetValue(out directory, out string failureMessage))
@@ -106,16 +130,5 @@ public static class ModsUtility {
         }
 
         return Result<IReadOnlyList<Mod>>.Success(mods);
-    }
-
-    private static bool IsDependencyMissing(ModDependency dependency, ModCollection mods, Dictionary<string, ModDependency> missing) =>
-        (!mods.ContainsMod(dependency.Name, dependency.Version))
-        && (!missing.TryGetValue(dependency.Name, out var existingDependency) || dependency.Version > existingDependency.Version);
-
-    private static void AddMissingDependencies(Dictionary<string, ModDependency> missing, Mod mod, ModCollection mods) {
-        foreach (var dependency in mod.Dependencies) {
-            if (IsDependencyMissing(dependency, mods, missing))
-                missing.Add(dependency.Name, dependency);
-        }
     }
 }

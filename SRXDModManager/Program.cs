@@ -4,7 +4,6 @@ using System.IO;
 using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
-using SRXDModManager.Library;
 
 namespace SRXDModManager;
 
