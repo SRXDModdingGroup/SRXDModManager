@@ -16,27 +16,33 @@ open config.json and replace the value of gameDirectory with the correct directo
 ## Commands
 
 ```
-build il2cpp           Switches SRXD to the IL2CPP build. Mods will not be loaded when using this build
+bepinex install        		Installs BepInEx
 
-build mono             Switches SRXD to the Mono build. Mods will be loaded when using this build
+bepinex uninstall      		Uninstalls BepInEx
+	--full, -f     		Uninstall all BepInEx files, including plugins and config
 
-check <name>           Checks a mod for updates
+build il2cpp           		Switches SRXD to the IL2CPP build. Mods will not be loaded when using this build
 
-check all              Checks all mods for updates
+build mono             		Switches SRXD to the Mono build. Mods will be loaded when using this build
 
-download <repository>  Downloads a mod from a Git release
+check <name>           		Checks a mod for updates
 
-exit                   Exits the application
+check all              		Checks all mods for updates
 
-info <name>            Gets detailed information about a mod
+download <repository>  		Downloads a mod from a Git release
+	--dependencies, -d	Also download any missing dependencies for this mod
 
-info all               Gets detailed information about all loaded mods
+exit                   		Exits the application
 
-refresh                Refreshes the list of downloaded mods
+info <name>            		Gets detailed information about a mod
 
-update <name>          Updates a mod if there is a new version available
+info all               		Gets detailed information about all loaded mods
 
-update all             Updates all loaded mods, if updates are available
+refresh                		Refreshes the list of downloaded mods
 
-For all download and update commands, you can append the -d or --dependencies option to also download any missing dependencies
+update <name>          		Updates a mod if there is a new version available
+	--dependencies, -d	Also download any missing dependencies for this mod
+
+update all             		Updates all loaded mods, if updates are available
+	--dependencies, -d	Also download any missing dependencies for all mods
 ```
