@@ -18,6 +18,17 @@ public class CommandLine {
     public void Invoke(string[] args) => root.Invoke(args);
 
     private void CreateCommands() {
+        root.AddCommand(CreateCommand("bepinex", "Installs or uninstalls BepInEx", command => {
+            command.AddCommand(CreateCommand("install", "Installs the latest non-preview version of BepInEx",
+                command => command.SetHandler(() => modManager.InstallBepInEx().Wait())));
+            command.AddCommand(CreateCommand("uninstall", "Uninstalls BepInEx", command => {
+                var fullOption = new Option<bool>(new[] { "--full", "-f" }, "Delete all BepInEx files, including plugins and config");
+                
+                command.AddOption(fullOption);
+                command.SetHandler(modManager.UninstallBepInEx, fullOption);
+            }));
+        }));
+        
         root.AddCommand(CreateCommand("build", "Sets which build of the game to use", command => {
             command.AddCommand(CreateCommand("il2cpp", "The IL2CPP build. Mods will not be loaded when using this build",
                 command => command.SetHandler(() => modManager.SwitchBuild(ActiveBuild.Il2Cpp))));

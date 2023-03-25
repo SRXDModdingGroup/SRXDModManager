@@ -79,12 +79,12 @@ public static class ModsUtility {
 
     public static Result<ActiveBuild> GetActiveBuild(string gameDirectory) {
         if (!Util.VerifyDirectoryExists(gameDirectory)
-                .Then(directory => Util.VerifyFileExists(Path.Combine(directory, "UnityPlayer'dll")))
-                .TryGetValue(out string directory, out string failureMessage))
+                .Then(directory => Util.VerifyFileExists(Path.Combine(directory, "UnityPlayer.dll")))
+                .TryGetValue(out _, out string failureMessage))
             return Result<ActiveBuild>.Failure(failureMessage);
 
-        bool monoExists = File.Exists(Path.Combine(directory, "UnityPlayer_Mono.dll"));
-        bool il2CppExists = File.Exists(Path.Combine(directory, "UnityPlayer_IL2CPP.dll"));
+        bool monoExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_Mono.dll"));
+        bool il2CppExists = File.Exists(Path.Combine(gameDirectory, "UnityPlayer_IL2CPP.dll"));
 
         if (!il2CppExists && monoExists)
             return Result<ActiveBuild>.Success(ActiveBuild.Il2Cpp);

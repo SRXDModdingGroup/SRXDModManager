@@ -8,15 +8,32 @@ using Newtonsoft.Json;
 namespace SRXDModManager.Library; 
 
 internal static class Util {
+    public static void MoveAndReplace(string sourcePath, string destinationPath) {
+        if (File.Exists(destinationPath))
+            File.Delete(destinationPath);
+        
+        File.Move(sourcePath, destinationPath);
+    }
+
+    public static void DeleteFileIfExists(string path) {
+        if (File.Exists(path))
+            File.Delete(path);
+    }
+    
+    public static void DeleteDirectoryIfExists(string path) {
+        if (Directory.Exists(path))
+            Directory.Delete(path, true);
+    }
+
     public static string GetUniqueFilePath(string directory, string name, string extension) {
         for (int i = 0; i < ushort.MaxValue; i++) {
             string path = Path.Combine(directory, $"{name}_{i}{extension}");
 
-            if (!File.Exists(path))
+            if (!File.Exists(path) && !Directory.Exists(path))
                 return path;
         }
 
-        return string.Empty;
+        return Path.Combine(directory, $"{name}{extension}");
     }
     
     public static Result<string> VerifyDirectoryExists(string directory) {
@@ -90,22 +107,22 @@ internal static class Util {
         return Result<ModManifest>.Success(manifest);
     }
 
-    public static Result<GitHubAsset> GetZipAsset(GitHubRelease release) {
+    public static Result<GitHubAsset> GetAsset(GitHubRelease release, string file) {
         foreach (var asset in release.Assets) {
-            if (asset.Name == "plugin.zip")
+            if (asset.Name == file)
                 return Result<GitHubAsset>.Success(asset);
         }
 
-        return Result<GitHubAsset>.Failure($"Release {release.Name} does not have a plugin.zip file");
+        return Result<GitHubAsset>.Failure($"Release {release.Name} does not have file {file}");
     }
-    
-    public static Result<GitHubAsset> GetManifestAsset(GitHubRelease release) {
+
+    public static Result<GitHubAsset> GetAsset(GitHubRelease release, Func<string, bool> condition) {
         foreach (var asset in release.Assets) {
-            if (asset.Name == "manifest.json")
+            if (condition(asset.Name))
                 return Result<GitHubAsset>.Success(asset);
         }
 
-        return Result<GitHubAsset>.Failure($"Release {release.Name} does not have a manifest.json file");
+        return Result<GitHubAsset>.Failure($"Release {release.Name} does not have a file that matches the constraint");
     }
 
     public static async Task UnzipStream(Stream stream, string directory) {

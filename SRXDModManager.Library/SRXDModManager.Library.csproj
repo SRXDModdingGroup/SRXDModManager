@@ -43,6 +43,7 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="ActiveBuild.cs" />
+        <Compile Include="BepInExInstaller.cs" />
         <Compile Include="GitHub\AssetStream.cs" />
         <Compile Include="GitHub\GitHubAsset.cs" />
         <Compile Include="GitHub\GitHubClient.cs" />

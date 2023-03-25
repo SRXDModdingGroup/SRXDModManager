@@ -67,6 +67,14 @@ public static class ResultExtensions {
     
     public static async Task<Result> Then(this Task<Result> task, Func<Task<Result>> next) => await (await task).Then(next);
     
+    public static async Task<Result<TNext>> Then<TNext>(this Task<Result> task, Func<Result<TNext>> next) => (await task).Then(next);
+
+    public static async Task<Result<TNext>> Then<TNext>(this Task<Result> task, Func<Task<Result<TNext>>> next) => await (await task).Then(next);
+    
+    public static async Task<Result> Then<T>(this Task<Result<T>> task, Func<T, Result> next) => (await task).Then(next);
+    
+    public static async Task<Result> Then<T>(this Task<Result<T>> task, Func<T, Task<Result>> next) => await (await task).Then(next);
+
     public static async Task<Result<TNext>> Then<T, TNext>(this Task<Result<T>> task, Func<T, Result<TNext>> next) => (await task).Then(next);
 
     public static async Task<Result<TNext>> Then<T, TNext>(this Task<Result<T>> task, Func<T, Task<Result<TNext>>> next) => await (await task).Then(next);

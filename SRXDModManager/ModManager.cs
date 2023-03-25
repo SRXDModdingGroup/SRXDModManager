@@ -13,6 +13,7 @@ public class ModManager {
     private string defaultOwner;
     private string pluginsDirectory;
     private ModsClient client;
+    private BepInExInstaller bepInExInstaller;
     private ModCollection loadedMods;
     
     public ModManager(string gameDirectory, string defaultOwner) {
@@ -21,6 +22,7 @@ public class ModManager {
         pluginsDirectory = Path.Combine(this.gameDirectory, "BepInEx", "plugins");
         loadedMods = new ModCollection();
         client = new ModsClient();
+        bepInExInstaller = new BepInExInstaller();
     }
     
     public void RefreshMods() {
@@ -81,6 +83,28 @@ public class ModManager {
                     Console.WriteLine($"{mod}: {mod.Description}");
             }
         }
+    }
+
+    public void UninstallBepInEx(bool full) {
+        if (bepInExInstaller.Uninstall(gameDirectory, full).TryGetValue(out string failureMessage))
+            Console.WriteLine("Successfully uninstalled BepInEx");
+        else
+            Console.WriteLine($"Failed to uninstall BepInEx: {failureMessage}");
+        
+        SwitchBuild(ActiveBuild.Il2Cpp);
+        
+        lock (loadedMods)
+            loadedMods.Clear();
+    }
+
+    public async Task InstallBepInEx() {
+        if ((await bepInExInstaller.Install(gameDirectory)).TryGetValue(out string failureMessage))
+            Console.WriteLine("Successfully installed BepInEx");
+        else
+            Console.WriteLine($"Failed to install BepInEx: {failureMessage}");
+        
+        SwitchBuild(ActiveBuild.Mono);
+        RefreshMods();
     }
 
     public async Task Download(string address, bool resolveDependencies) {

@@ -9,19 +9,19 @@ public class ModsClient {
     public Task<Result<Mod>> DownloadMod(Address address, string directory)
         => Util.VerifyDirectoryExists(directory)
             .Then(_ => gitHubClient.GetLatestRelease(address))
-            .Then(Util.GetZipAsset)
-            .Then(gitHubClient.DownloadAssetFromStream)
+            .Then(release => Util.GetAsset(release, "plugin.zip"))
+            .Then(gitHubClient.DownloadAssetAsStream)
             .Then(stream => PerformDownload(stream, directory));
 
     public Task<Result<Mod>> GetLatestModInfo(Address address)
         => gitHubClient.GetLatestRelease(address)
-            .Then(Util.GetManifestAsset)
+            .Then(release => Util.GetAsset(release, "manifest.json"))
             .Then(gitHubClient.DownloadAssetAsString)
             .Then(Util.DeserializeModManifest)
             .Then(Util.CreateModFromManifest);
     
     private static async Task<Result<Mod>> PerformDownload(AssetStream stream, string directory) {
-        string tempDirectory = Path.Combine(directory, Util.GetUniqueFilePath(directory, stream.Name, ".tmp"));
+        string tempDirectory = Util.GetUniqueFilePath(directory, stream.Name, ".tmp");
 
         if (Directory.Exists(tempDirectory))
             Directory.Delete(tempDirectory, true);
